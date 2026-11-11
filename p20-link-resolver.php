@@ -3,7 +3,10 @@
  * Plugin Name: Podcast 2.0 Link Resolver
  * Description: pod.link-style smart links for podcasts, limited to Podcasting 2.0 apps (Fountain, CurioCaster, Podverse, Podfriend). Link to a show or a single episode by its podcast:guid / episode guid; metadata comes from the Podcast Index API. Shortcode: [p20link].
  * Version: 0.1.0
+ * Requires at least: 5.3
+ * Requires PHP: 7.4
  * Author: Matt Finlay
+ * License: GPL-2.0-or-later
  * Text Domain: p20-link
  *
  * USAGE:
