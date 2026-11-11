@@ -1,0 +1,16 @@
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Local env / secrets
+.env
+.env.*
+
+# Build output
+dist/
+*.zip
