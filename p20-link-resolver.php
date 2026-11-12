@@ -943,6 +943,7 @@ class P20_Link_Resolver {
 		ob_start();
 		?>
 		<div class="p20link-search">
+			<h1 class="p20link-search-h1">PodcastLinker</h1>
 			<h2 class="p20link-search-title"><?php esc_html_e( 'Find a podcast', 'p20-link' ); ?></h2>
 			<p class="p20link-search-subtitle"><?php esc_html_e( 'Search, pick a show (or one of its episodes) and get a link that opens it in Podcasting 2.0 apps.', 'p20-link' ); ?></p>
 			<?php if ( $message ) : ?>
@@ -1234,6 +1235,7 @@ class P20_Link_Resolver {
 			.p20link-footer { margin-top: 1.25em; font-size: 0.85em; color: #444; }
 			.p20link-footer + .p20link-footer { margin-top: 0.3em; }
 			.p20link-footer a { color: inherit; text-decoration: underline; }
+			.p20link-search-h1 { font-weight: 700; font-size: 2em; line-height: 1.2; margin: 0 0 0.25em; }
 			.p20link-search-title { font-weight: 700; font-size: 1.8em; line-height: 1.2; margin: 0 0 0.2em; }
 			.p20link-search-subtitle { color: #666; margin: 0 0 1.1em; }
 			.p20link-search-row { display: flex; gap: 0.5em; margin-bottom: 1em; }

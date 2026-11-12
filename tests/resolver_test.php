@@ -311,6 +311,7 @@ check( 'disabled app hidden', false === strpos( $html, 'fountain.fm/show' ) && 4
 // no show -> search UI; no creds -> message
 $html = $o->render( array() );
 check( 'no show -> search UI', false !== strpos( $html, 'p20link-search-input' ) );
+check( 'search UI has PodcastLinker h1 on top', false !== strpos( $html, '<h1 class="p20link-search-h1">PodcastLinker</h1>' ) && strpos( $html, 'p20link-search-h1' ) < strpos( $html, 'p20link-search-title' ) );
 $GLOBALS['opts']['p20link_api_key'] = '';
 $html = $o->render( array( 'show' => 'abc-guid' ) );
 check( 'no credentials -> notice, no API call', false !== strpos( $html, 'not available' ) );
