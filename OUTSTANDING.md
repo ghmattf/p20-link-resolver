@@ -6,7 +6,7 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 ## Open
 
 ### 1. Live-verify app URL patterns and Podcast Index field names
-- **Status:** Open (highest priority before a public release) - **Fountain done 2026-11-12** (guid lookup + rendered show/episode pages verified live; the guide's numeric Fountain patterns were dead and are replaced by `fountain_id()`, implemented this turn, pending release).
+- **Status:** Open (highest priority before a public release) - **Fountain done 2026-11-12** (guid lookup + rendered show/episode pages verified live; the guide's numeric Fountain patterns were dead and are replaced by `fountain_id()`, shipped in 0.1.1).
 - **What:** the remaining three app link patterns (`app_link()` cases `curiocaster` / `podverse` / `podfriend`) come from the Podcast Index platform-links guide, and the API field names (`feed.id`, `feed.podcastGuid`, `feed.itunesId`, `episode.id`, `items[]`, `feeds[]`) come from the docs-api OpenAPI source. None of those were hit live. 0.1.0 was built and tested offline.
 - **Plan:** with real API credentials, resolve one show + one episode and open each remaining app's link by hand; confirm favicon URLs at `https://{domain}/favicon.ico`. Record results in the README's "Verification status" section and delete entries once confirmed. Fix `app_link()` / icon defaults if anything differs, with a test.
 
