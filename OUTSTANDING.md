@@ -6,9 +6,9 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 ## Open
 
 ### 1. Live-verify app URL patterns and Podcast Index field names
-- **Status:** Open (highest priority before a public release)
-- **What:** 0.1.0 was built and tested offline. The four app link patterns (`app_link()`) come from the Podcast Index platform-links guide, and the API field names (`feed.id`, `feed.podcastGuid`, `feed.itunesId`, `feed.artwork`, `episode.id`, `items[]`, `feeds[]`) come from the docs-api OpenAPI source. None were hit live.
-- **Plan:** with real API credentials, resolve one show + one episode and open each app's link by hand; confirm favicon URLs at `https://{domain}/favicon.ico`. Record results in the README's "Not verified live" section and delete it once everything is confirmed. Fix `app_link()` / icon defaults if anything differs, with a test.
+- **Status:** Open (highest priority before a public release) - **Fountain done 2026-11-12** (guid lookup + rendered show/episode pages verified live; the guide's numeric Fountain patterns were dead and are replaced by `fountain_id()`, implemented this turn, pending release).
+- **What:** the remaining three app link patterns (`app_link()` cases `curiocaster` / `podverse` / `podfriend`) come from the Podcast Index platform-links guide, and the API field names (`feed.id`, `feed.podcastGuid`, `feed.itunesId`, `episode.id`, `items[]`, `feeds[]`) come from the docs-api OpenAPI source. None of those were hit live. 0.1.0 was built and tested offline.
+- **Plan:** with real API credentials, resolve one show + one episode and open each remaining app's link by hand; confirm favicon URLs at `https://{domain}/favicon.ico`. Record results in the README's "Verification status" section and delete entries once confirmed. Fix `app_link()` / icon defaults if anything differs, with a test.
 
 ### 2. Direct input in the search box (feed URL, Apple id, podcast guid)
 - **Status:** Open
@@ -46,6 +46,11 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 ### 8. Custom date range in Reports
 - **Status:** Open
 - **What:** `render_reports_tab()` offers only 7 / 30 / 90 days and all time; the music plugin also has custom ranges and an artist filter (here: a show filter).
+
+### 9. Music plugin: consider the official Fountain API
+- **Status:** Open (cross-repo; music half not yet added to `ghmattf/v4v-musiclink-pro`)
+- **What:** Fountain now has a documented public API (`api.fountain.fm/v1`, see `fountain.fm/docs.md`) - verified working 2026-11-12. This repo switched `fountain_id()` to it; the music plugin still uses the unofficial Next.js server-action (`fountain_try_resolve()`) with a self-healing `next-action` fingerprint that breaks on every Fountain redeploy. `POST /v1/search/content` (query + `types`) might replace it for TRACK/ALBUM if its hits' `_guid` values match Music Index guids - unverified for music.
+- **Plan (music repo only):** probe `/v1/search/content` against a known music guid; if it matches, port `fountain_resolve()` to it, keeping the search-URL fallback. Implement only that repo's half there.
 
 ## Closed decisions
 
