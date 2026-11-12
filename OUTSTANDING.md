@@ -52,6 +52,12 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **What:** Fountain now has a documented public API (`api.fountain.fm/v1`, see `fountain.fm/docs.md`) - verified working 2026-11-12. This repo switched `fountain_id()` to it; the music plugin still uses the unofficial Next.js server-action (`fountain_try_resolve()`) with a self-healing `next-action` fingerprint that breaks on every Fountain redeploy. `POST /v1/search/content` (query + `types`) might replace it for TRACK/ALBUM if its hits' `_guid` values match Music Index guids - unverified for music.
 - **Plan (music repo only):** probe `/v1/search/content` against a known music guid; if it matches, port `fountain_resolve()` to it, keeping the search-URL fallback. Implement only that repo's half there.
 
+### 10. Document hardcoded shortcode attributes in the plugin description
+- **Status:** Open
+- **What:** `[p20link show="..." episode="..."]` hardcoding works and is documented in the file's USAGE comment block and README ("Inline placements"), but the plugin header `Description:` - what WordPress shows on the admin Plugins screen - only says "Shortcode: [p20link]" with no attribute hint.
+- **Where:** `p20-link-resolver.php` plugin header `Description:` (line 4).
+- **Plan:** append a compact example to the Description, e.g. `Shortcode: [p20link] or [p20link show="guid" episode="guid"]` (watch overall length - WP truncates long descriptions in the list view), and keep README in sync if the wording changes.
+
 ## Closed decisions
 
 - **One edition only** (no standard/Pro split): decided by the user, 2026-11-11.
