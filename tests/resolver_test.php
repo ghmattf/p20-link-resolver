@@ -51,6 +51,18 @@ function wp_remote_get( $url, $args ) {
 	}
 	return array( 'code' => 404, 'body' => '' );
 }
+function wp_remote_post( $url, $args ) {
+	$GLOBALS['http_log'][] = array( $url, $args );
+	// Match needles against url + body so Fountain lookups can be told
+	// apart by the guid they carry (the URL is always the same endpoint).
+	$haystack = $url . ' ' . ( isset( $args['body'] ) ? (string) $args['body'] : '' );
+	foreach ( $GLOBALS['http_mock'] as $needle => $resp ) {
+		if ( false !== strpos( $haystack, $needle ) ) {
+			return $resp;
+		}
+	}
+	return array( 'code' => 404, 'body' => '' );
+}
 function wp_remote_retrieve_response_code( $r ) { return $r['code']; }
 function wp_remote_retrieve_body( $r ) { return $r['body']; }
 
@@ -109,7 +121,14 @@ $base = array(
 	'pi_episode_id' => 0, 'episode_title' => '', 'episode_image' => '',
 	'episode_wanted' => false, 'episode_missing' => false,
 );
-check( 'fountain show', 'https://fountain.fm/show/75075' === call( $o, 'app_link', 'fountain', $base )['url'] );
+
+// Fountain resolves its opaque ids through the public lookup API (mocked;
+// the guide's numeric patterns were verified dead on 2026-11-12).
+$GLOBALS['http_mock'] = array(
+	'podcast:item:guid:PC2084' => array( 'code' => 200, 'body' => json_encode( array( 'hits' => array( array( '_id' => 'EfGhEp456', '_type' => 'EPISODE' ) ) ) ) ),
+	'"id":"podcast:guid:g"'    => array( 'code' => 200, 'body' => json_encode( array( 'hits' => array( array( '_id' => 'AbCdShow123', '_type' => 'SHOW' ) ) ) ) ),
+);
+check( 'fountain show', 'https://fountain.fm/show/AbCdShow123' === call( $o, 'app_link', 'fountain', $base )['url'] );
 check( 'curiocaster show', 'https://curiocaster.com/podcast/pi75075' === call( $o, 'app_link', 'curiocaster', $base )['url'] );
 check( 'podverse show', 'https://api.podverse.fm/api/v1/podcast/podcastindex/75075' === call( $o, 'app_link', 'podverse', $base )['url'] );
 check( 'podfriend show', 'https://podfriend.com/podcast/1234' === call( $o, 'app_link', 'podfriend', $base )['url'] );
@@ -119,7 +138,7 @@ check( 'podfriend omitted without apple id', null === call( $o, 'app_link', 'pod
 $ep = $base;
 $ep['episode_wanted'] = true; $ep['episode_guid'] = 'PC2084/a b'; $ep['pi_episode_id'] = 16795090;
 $l = call( $o, 'app_link', 'fountain', $ep );
-check( 'fountain episode link', 'https://fountain.fm/episode/16795090' === $l['url'] && $l['episode'] );
+check( 'fountain episode link', 'https://fountain.fm/episode/EfGhEp456' === $l['url'] && $l['episode'] );
 $l = call( $o, 'app_link', 'podfriend', $ep );
 check( 'podfriend episode link encodes guid', 'https://podfriend.com/podcast/1234/PC2084%2Fa%20b' === $l['url'] && $l['episode'] );
 $l = call( $o, 'app_link', 'curiocaster', $ep );
@@ -128,9 +147,55 @@ $l = call( $o, 'app_link', 'podverse', $ep );
 check( 'podverse episode degrades to show', ! $l['episode'] );
 $missing = $ep; $missing['episode_missing'] = true;
 $l = call( $o, 'app_link', 'fountain', $missing );
-check( 'missing episode -> fountain show link', 'https://fountain.fm/show/75075' === $l['url'] && ! $l['episode'] );
+check( 'missing episode -> fountain show link', 'https://fountain.fm/show/AbCdShow123' === $l['url'] && ! $l['episode'] );
+
+// --- fountain lookup: id shapes, failure policy, budget ---
+$mk_hit = function ( $hits ) {
+	return array( 'code' => 200, 'body' => json_encode( array( 'hits' => $hits ) ) );
+};
+
+// The documented "{type}:id:{id}" ContentID form is stripped to the bare id.
+$GLOBALS['http_mock']['api.fountain.fm'] = $mk_hit( array( array( '_id' => 'episode:id:PfxEp1', '_type' => 'EPISODE' ) ) );
+check( 'fountain id strips content-id prefix', 'PfxEp1' === call( $o, 'fountain_id', 'episode', 'prefixed-guid', 'parent-guid' ) );
+
+// 200 without a match = definitive miss (remembered for an hour).
+$GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 200, 'body' => json_encode( array( 'hits' => array() ) ) );
+check( 'fountain empty hits -> miss', '' === call( $o, 'fountain_id', 'show', 'never-there' ) );
+check( 'fountain definitive miss TTL', HOUR_IN_SECONDS === call( $o, 'fountain_ttl' ) );
+
+// 5xx = unreliable (remembered for 30 seconds only).
+$GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 503, 'body' => '' );
+check( 'fountain 503 -> miss', '' === call( $o, 'fountain_id', 'show', 'flaky-guid' ) );
+check( 'fountain soft miss TTL', 30 === call( $o, 'fountain_ttl' ) );
+
+// A hit of the wrong type never becomes a URL.
+$GLOBALS['http_mock']['api.fountain.fm'] = $mk_hit( array( array( '_id' => 'WrongType1', '_type' => 'SHOW' ) ) );
+check( 'fountain wrong type -> miss', '' === call( $o, 'fountain_id', 'episode', 'wrong-type-guid', 'parent-guid' ) );
+unset( $GLOBALS['http_mock']['api.fountain.fm'] );
+
+// Resolve budget: no HTTP goes out and nothing is remembered.
+$rp = new ReflectionProperty( $o, 'resolve_budgeted' );
+$rp->setAccessible( true );
+$rp->setValue( $o, true );
+for ( $i = 0; $i < 60; $i++ ) {
+	call( $o, 'is_rate_limited', 'resolve', 60, MINUTE_IN_SECONDS );
+}
+$GLOBALS['http_mock']['api.fountain.fm'] = $mk_hit( array( array( '_id' => 'BudgetId1', '_type' => 'SHOW' ) ) );
+$n = count( $GLOBALS['http_log'] );
+check( 'fountain budget exhausted -> empty id', '' === call( $o, 'fountain_id', 'show', 'budget-guid' ) );
+check( 'fountain budget exhausted -> no HTTP', count( $GLOBALS['http_log'] ) === $n );
+check( 'fountain budget exhausted -> nothing remembered', false === get_transient( 'p20l_fnt_1_' . md5( 'show|budget-guid|' ) ) );
+$rp->setValue( $o, false );
+unset( $GLOBALS['http_mock']['api.fountain.fm'] );
+// Drop the spent rate-limit windows so the render tests below aren't throttled.
+foreach ( array_keys( $GLOBALS['transients'] ) as $tk ) {
+	if ( 0 === strpos( $tk, 'p20l_rl_' ) ) {
+		unset( $GLOBALS['transients'][ $tk ] );
+	}
+}
 
 // --- resolution + caching (mocked API) ---
+$GLOBALS['http_log'] = array(); // Fountain lookups above already logged.
 $feed_json = json_encode( array( 'status' => 'true', 'feed' => array(
 	'id' => 920666, 'podcastGuid' => 'abc-guid', 'title' => 'Podcasting 2.0', 'author' => 'Adam',
 	'image' => 'https://img/i.jpg', 'artwork' => 'https://img/art.jpg', 'itunesId' => 1554567890,
@@ -183,12 +248,14 @@ check( '401 is a soft failure (30s), not a definitive miss', 30 === call( $o, 'n
 $GLOBALS['http_mock'] = array(
 	'/podcasts/byguid' => array( 'code' => 200, 'body' => $feed_json ),
 	'/episodes/byguid' => array( 'code' => 200, 'body' => $ep_json ),
+	'podcast:item:guid:PC2084'      => array( 'code' => 200, 'body' => json_encode( array( 'hits' => array( array( '_id' => 'EpRender1', '_type' => 'EPISODE' ) ) ) ) ),
+	'"id":"podcast:guid:abc-guid"' => array( 'code' => 200, 'body' => json_encode( array( 'hits' => array( array( '_id' => 'ShowRender1', '_type' => 'SHOW' ) ) ) ) ),
 );
 $GLOBALS['transients'] = array();
 $html = $o->render( array( 'show' => 'abc-guid', 'episode' => 'PC2084' ) );
 check( 'render: 4 app buttons', 4 === substr_count( $html, 'class="p20link-item ' ) );
 check( 'render: episode title shown', false !== strpos( $html, 'Ep 1' ) );
-check( 'render: fountain episode href', false !== strpos( $html, 'https://fountain.fm/episode/555' ) );
+check( 'render: fountain episode href', false !== strpos( $html, 'https://fountain.fm/episode/EpRender1' ) );
 check( 'render: degraded apps flagged', substr_count( $html, '(opens the show)' ) === 2 );
 check( 'render: no share/url param leak of API secret', false === strpos( $html, 'SECRET' ) );
 

@@ -49,7 +49,7 @@ harness doesn't stub yet, add the stub to the harness.
 3. **Database**: `p20link_cache` (one row per show/episode, keyed on `md5(show|episode)`) and `p20link_log`. Created by `create_tables()` on activation **and** on the next admin load (`maybe_create_tables()`), because deployment is by direct file overwrite and activation hooks don't fire.
 4. **Podcast Index API**: `api_headers()` (sha1 auth), `api_get()`, `fetch_show()`, `fetch_episode()`. Negative caching via `neg_ttl()` / `neg_key()`.
 5. **Resolution**: `resolve_release()` is cache-first, refreshes stale rows on the `shutdown` hook (`run_queued_refresh()`), and returns the show even when the episode is unknown (`episode_missing`).
-6. **Apps**: `app_registry()` and `app_link()` (the URL patterns), plus per-app settings, ordering and icon helpers.
+6. **Apps**: `app_registry()` and `app_link()` (the URL patterns), plus per-app settings, ordering and icon helpers. Fountain alone needs an id lookup: `fountain_id()` / `fountain_lookup()` (see Gotchas).
 7. **Front end**: `render()` (shortcode), `render_html()`, `render_search_ui()`, social tags, `inline_css()` / `inline_js()` (a nowdoc, so PHP lint does not check it; see Gotchas).
 8. **AJAX**: `ajax_search()` (search relay), `ajax_log_open()` / `ajax_log_app()` (usage beacons).
 9. **Admin**: settings page with Settings / View Log / Reports / Cache tabs and `admin-post` handlers.
@@ -69,12 +69,13 @@ harness doesn't stub yet, add the stub to the harness.
 ## External facts and where they came from
 
 - **Podcast Index API**: base `https://api.podcastindex.org/api/1.0`. Auth headers: `User-Agent`, `X-Auth-Key`, `X-Auth-Date` (unix time), `Authorization` = `sha1(key . secret . time)`. Endpoints used: `podcasts/byguid?guid=`, `podcasts/byfeedid?id=`, `episodes/byguid?guid=&feedid=`, `episodes/byfeedid?id=&max=`, `search/byterm?q=&max=`. Source of truth is the OpenAPI source in [`Podcastindex-org/docs-api`](https://github.com/Podcastindex-org/docs-api) under `api_src/` (paths in `api_src/paths/**`, fields in `api_src/components/**`).
-- **App URL patterns**: [`Podcastindex-org/podcast-platform-links`](https://github.com/Podcastindex-org/podcast-platform-links) `README.md` (show and episode tables). `app_link()` mirrors it. If that guide changes, update `app_link()`, the README table and the tests together.
+- **App URL patterns**: [`Podcastindex-org/podcast-platform-links`](https://github.com/Podcastindex-org/podcast-platform-links) `README.md` (show and episode tables). `app_link()` mirrors it - **except Fountain** (see Gotchas). If that guide changes, update `app_link()`, the README table and the tests together.
 - The Podcast Index `feed.id` is what the guide calls `podcastIndexShowID`; `episode.id` is `podcastIndexEpisodeID`; `feed.itunesId` is `appleID`.
 
 ## Gotchas
 
-- **The agent sandbox usually cannot reach the apps or the Podcast Index** (network allowlist). Read those docs through the GitHub tools (`get_file_contents`) instead of `curl`. Never claim a link pattern or API field was "tested live" unless you actually hit it; the README's "Not verified live" section must stay honest.
+- **Fountain's URLs use opaque ids, not Podcast Index ids.** The platform-links guide's `fountain.fm/show|episode/{PI id}` patterns render Fountain's client-side 404 (verified live 2026-11-12; a wrong path still returns HTTP 200). `fountain_id()` resolves `podcast:guid` / episode guid through Fountain's public lookup API (`POST api.fountain.fm/v1/search/lookup`, documented, **no key required**), cached in `p20l_fnt_*` transients (30-day hits, 1 h / 30 s misses via `fountain_ttl()`). Don't "simplify" it back to a plain URL pattern.
+- **The agent sandbox usually cannot reach the apps or the Podcast Index** (network allowlist). Read those docs through the GitHub tools (`get_file_contents`) instead of `curl`. Never claim a link pattern or API field was "tested live" unless you actually hit it; the README's "Not verified live" section must stay honest. (fountain.fm and api.fountain.fm were reachable from Matt's machine on 2026-11-12 - don't assume that holds.)
 - **Inline JS is inside a PHP nowdoc**, so `php -l` can't see JS syntax errors. After editing it, extract and check it: `awk "/<<<'JS'/{f=1;next}/^JS;/{f=0}f" p20-link-resolver.php > /tmp/inline.js && node --check /tmp/inline.js`.
 - Activation hooks don't fire on direct file overwrite (Matt's deploy method), hence `maybe_create_tables()`.
 - Stale transients are the first suspect when something looks broken; bump `NEG_SCHEMA` rather than telling users to clear them by hand.

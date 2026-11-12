@@ -24,11 +24,13 @@
  *      [p20link show="{podcast-guid}" episode="{episode-guid}"]
  *      [p20link show="{podcast-guid}" header="false"]
  *
- * TARGET APPS: link patterns follow the Podcast Index "podcast-platform-links"
- * guide. Fountain / CurioCaster / Podverse are keyed on the Podcast Index show
- * id; Podfriend on the Apple Podcasts id (the show must have one). Episode-level
- * links exist for Fountain (Podcast Index episode id) and Podfriend (episode
- * guid); for the other apps an episode link degrades to the show page.
+ * TARGET APPS: CurioCaster / Podverse / Podfriend follow the Podcast Index
+ * "podcast-platform-links" guide (show ids; Podfriend also the episode guid).
+ * Fountain is the exception: its public URLs use opaque Fountain ids, so show
+ * and episode links are resolved from the podcast:guid / episode guid through
+ * Fountain's public lookup API (api.fountain.fm, no key required) and cached
+ * in transients. An episode Fountain doesn't know yet opens the show; a show
+ * it doesn't know omits the button.
  *
  * CACHING: one row per show/episode in {prefix}p20link_cache. Stale rows keep
  * serving while a refresh runs on the shutdown hook, so a Podcast Index outage
@@ -55,9 +57,15 @@ class P20_Link_Resolver {
 	const EPISODES_MAX        = 25;
 	const RESOLVE_RATE_MAX    = 60;       // Upstream resolves per IP per minute.
 	const SEARCH_RATE_MAX     = 30;       // Search relay calls per IP per minute.
+	const FOUNTAIN_API        = 'https://api.fountain.fm/v1';
+	const FOUNTAIN_HIT_TTL    = 30 * DAY_IN_SECONDS; // Fountain ids are permanent.
+	const FOUNTAIN_SCHEMA     = 1;        // Bump to invalidate remembered Fountain lookups.
 
 	/** HTTP status of the last Podcast Index call (0 = transport/undecodable). */
 	private $last_status = 0;
+
+	/** HTTP status of the last Fountain lookup (0 = transport/undecodable). */
+	private $fountain_status = 0;
 
 	/** True only while rendering a page: allows queueing background refreshes. */
 	private $refresh_allowed = false;
@@ -370,6 +378,111 @@ class P20_Link_Resolver {
 	}
 
 	/* ------------------------------------------------------------------ *
+	 * Fountain lookup API
+	 * ------------------------------------------------------------------ */
+
+	/**
+	 * Fountain's public URL ids are opaque tokens, not Podcast Index ids:
+	 * the platform-links guide's fountain.fm/show|episode/{PI id} patterns
+	 * render Fountain's client-side 404 (verified live 2026-11-12), as do
+	 * all numeric ids. Resolve guid -> Fountain id through Fountain's
+	 * documented lookup endpoint (no key required), cached in transients:
+	 * hits are remembered long (ids are permanent), misses follow the same
+	 * failure policy as the Podcast Index cache.
+	 *
+	 * @param string $kind   'show' or 'episode'.
+	 * @param string $guid   podcast:guid (show) or RSS item guid (episode).
+	 * @param string $parent podcast:guid of the feed; required for episodes.
+	 * @return string The Fountain id, or '' when not (yet) known.
+	 */
+	private function fountain_id( $kind, $guid, $parent = '' ) {
+		$guid   = (string) $guid;
+		$parent = (string) $parent;
+		if ( ( 'show' !== $kind && 'episode' !== $kind ) || '' === $guid ) {
+			return '';
+		}
+		if ( 'episode' === $kind && '' === $parent ) {
+			return ''; // Item lookups require the parent feed guid.
+		}
+		$key = 'p20l_fnt_' . self::FOUNTAIN_SCHEMA . '_' . md5( $kind . '|' . $guid . '|' . $parent );
+		$cached = get_transient( $key );
+		if ( false !== $cached ) {
+			return (string) $cached;
+		}
+		// Budget rejection happens before any HTTP and remembers nothing, so
+		// the window - not the cache - is what limits a burst (same policy
+		// as the Podcast Index resolves in resolve_release()).
+		if ( ! $this->may_call_upstream() ) {
+			return '';
+		}
+		$id = $this->fountain_lookup( $kind, $guid, $parent );
+		$id = is_string( $id ) ? $id : '';
+		set_transient( $key, $id, '' !== $id ? self::FOUNTAIN_HIT_TTL : $this->fountain_ttl() );
+		return $id;
+	}
+
+	/**
+	 * One POST to Fountain's public guid lookup. Returns the Fountain id,
+	 * '' for a definitive miss (200 without a matching hit, 404), or null
+	 * for an unreliable answer (transport error, 5xx, undecodable body) -
+	 * mirroring api_get()'s contract so fountain_ttl() can apply the same
+	 * 1-hour / 30-second remembered-miss policy as neg_ttl().
+	 */
+	private function fountain_lookup( $kind, $guid, $parent ) {
+		$payload = array( 'id' => ( 'show' === $kind ? 'podcast:guid:' : 'podcast:item:guid:' ) . $guid );
+		if ( 'episode' === $kind ) {
+			$payload['parent'] = 'podcast:guid:' . $parent;
+		}
+
+		// redirection => 0: never follow a remote redirect (SSRF hardening).
+		$response = wp_remote_post( self::FOUNTAIN_API . '/search/lookup', array(
+			'timeout'     => 8,
+			'redirection' => 0,
+			'headers'     => array(
+				'Content-Type' => 'application/json',
+				'Accept'       => 'application/json',
+				'User-Agent'   => 'P20LinkResolver/' . self::VERSION . ' (' . home_url() . ')',
+			),
+			'body'        => json_encode( $payload ),
+		) );
+
+		if ( is_wp_error( $response ) ) {
+			$this->fountain_status = 0;
+			return null;
+		}
+		$this->fountain_status = (int) wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $this->fountain_status ) {
+			return 404 === $this->fountain_status ? '' : null;
+		}
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $body ) || ! isset( $body['hits'] ) || ! is_array( $body['hits'] ) ) {
+			$this->fountain_status = 0; // An undecodable 200 proves nothing.
+			return null;
+		}
+		$want = 'show' === $kind ? 'SHOW' : 'EPISODE';
+		foreach ( $body['hits'] as $hit ) {
+			if ( ! is_array( $hit ) || ! isset( $hit['_id'], $hit['_type'] ) ) {
+				continue;
+			}
+			if ( $want !== strtoupper( (string) $hit['_type'] ) ) {
+				continue;
+			}
+			// The docs describe ContentIDs as "{type}:id:{id}"; the live
+			// response has carried the bare id. Accept both, and refuse
+			// anything outside Fountain's opaque id alphabet so a
+			// surprising payload can never reach a URL.
+			$id = preg_replace( '/^(show|episode):id:/', '', (string) $hit['_id'] );
+			return preg_match( '/^[A-Za-z0-9_-]{1,128}$/', $id ) ? $id : null;
+		}
+		return ''; // Readable hits without a match: Fountain doesn't know it (yet).
+	}
+
+	/** TTL for a remembered Fountain miss: same policy as neg_ttl(). */
+	private function fountain_ttl() {
+		return ( 200 === $this->fountain_status || 404 === $this->fountain_status ) ? self::FAIL_TTL : self::SOFT_FAIL_TTL;
+	}
+
+	/* ------------------------------------------------------------------ *
 	 * Release resolution (cache-first)
 	 * ------------------------------------------------------------------ */
 
@@ -516,16 +629,30 @@ class P20_Link_Resolver {
 	 */
 	private function app_link( $slug, $r ) {
 		$feed_id  = (int) $r['feed_id'];
-		$ep_id    = (int) $r['pi_episode_id'];
 		$ep_guid  = (string) $r['episode_guid'];
 		$has_ep   = $r['episode_wanted'] && ! $r['episode_missing'] && '' !== $ep_guid;
 
 		switch ( $slug ) {
 			case 'fountain':
-				if ( $has_ep && $ep_id > 0 ) {
-					return array( 'url' => 'https://fountain.fm/episode/' . $ep_id, 'episode' => true );
+				// Opaque Fountain ids must be looked up from the guids
+				// (see fountain_id()); the platform-links guide's numeric
+				// patterns 404. A missed episode degrades to the show
+				// ("opens the show" in the UI); a missed show omits the
+				// button (graceful degradation).
+				$pguid = (string) $r['podcast_guid'];
+				if ( '' !== $pguid ) {
+					if ( $has_ep ) {
+						$ep_f = $this->fountain_id( 'episode', $ep_guid, $pguid );
+						if ( '' !== $ep_f ) {
+							return array( 'url' => 'https://fountain.fm/episode/' . $ep_f, 'episode' => true );
+						}
+					}
+					$show_f = $this->fountain_id( 'show', $pguid );
+					if ( '' !== $show_f ) {
+						return array( 'url' => 'https://fountain.fm/show/' . $show_f, 'episode' => false );
+					}
 				}
-				return $feed_id > 0 ? array( 'url' => 'https://fountain.fm/show/' . $feed_id, 'episode' => false ) : null;
+				return null;
 
 			case 'curiocaster':
 				// No episode pattern is documented for CurioCaster.

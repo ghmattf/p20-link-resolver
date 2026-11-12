@@ -30,7 +30,7 @@ To try it for real, copy `p20-link-resolver.php` into `wp-content/plugins/p20-li
 3. Add a `case` to `app_link()` returning `array( 'url' => ..., 'episode' => bool )`, or `null` when the needed id is missing. `episode` is `true` only when the URL really points at the episode.
 4. If it needs a new piece of metadata (another Podcast Index field), add it to `fetch_show()` / `fetch_episode()`, the cache table (bump `TABLE_VERSION`), `cache_store()`, `release_from_row()` and `release_from_data()`.
 5. Extend the "How each app is linked" table in `README.md` and add tests for show, episode and missing-id cases.
-6. Don't depend on an unofficial or reverse-engineered endpoint without a very good reason; plain URL patterns are the point.
+6. Don't depend on an unofficial or reverse-engineered endpoint without a very good reason; plain URL patterns are the point. A *documented* public API is fine when the app has no stable URL pattern (Fountain's guid lookup is the precedent).
 
 ## Code style
 

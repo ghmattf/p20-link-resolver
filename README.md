@@ -27,18 +27,18 @@ Inline placements work in any post or page:
 
 ## How each app is linked
 
-Patterns come from the Podcast Index's [podcast-platform-links](https://github.com/Podcastindex-org/podcast-platform-links) guide.
+Patterns come from the Podcast Index's [podcast-platform-links](https://github.com/Podcastindex-org/podcast-platform-links) guide, except Fountain (see below).
 
 | App | Show link | Episode link |
 |---|---|---|
-| Fountain | `fountain.fm/show/{PI feed id}` | `fountain.fm/episode/{PI episode id}` |
+| Fountain | `fountain.fm/show/{Fountain id}` resolved from `podcast:guid` | `fountain.fm/episode/{Fountain id}` resolved from the episode guid |
 | CurioCaster | `curiocaster.com/podcast/pi{PI feed id}` | none documented - opens the show |
 | Podverse | `api.podverse.fm/api/v1/podcast/podcastindex/{PI feed id}` | needs a Podverse-internal id - opens the show |
 | Podfriend | `podfriend.com/podcast/{Apple id}` | `podfriend.com/podcast/{Apple id}/{encodeURIComponent(episode guid)}` |
 
 Podfriend is keyed on the Apple Podcasts id, so it is hidden for shows that have none. When an episode was requested but an app can only link the show, its button says "(opens the show)". If the Podcast Index doesn't know the episode yet, every app falls back to the show and a notice explains why.
 
-Unlike the music plugin's Fountain integration, **none of these need an unofficial endpoint or a fragile build fingerprint** - they are plain URL patterns.
+Fountain's public URLs use **opaque Fountain ids**, not Podcast Index ids - the guide's numeric `fountain.fm/show|episode/{PI id}` patterns render Fountain's client-side 404 (verified live 2026-11-12). The plugin resolves guid → id through Fountain's public [lookup API](https://fountain.fm/docs/endpoints/search/search-lookup.md) (`POST api.fountain.fm/v1/search/lookup`, no key required) and caches the result. An episode Fountain doesn't know yet opens the show; a show it doesn't know omits the button. Nothing unofficial or fragile - unlike the music plugin's Fountain integration, no build fingerprint is involved.
 
 ## Features
 
@@ -59,10 +59,14 @@ php tests/resolver_test.php     # offline: WordPress stubs + mocked Podcast Inde
 
 Like the music plugin, tables are created on activation and again on the next admin page load, so deploying by overwriting the file also works.
 
-## Not verified live
+## Verification status
 
-Built and tested without network access to the apps or the Podcast Index, so these are confirmed only against the documentation:
+Verified live on 2026-11-12:
 
-- The four app URL patterns (taken from the platform-links guide above)
+- Fountain: guid → id lookup (show and episode, no API key) and the rendered `fountain.fm/show/{id}` / `fountain.fm/episode/{id}` pages; the guide's numeric patterns confirmed dead (client-side 404)
+
+Not yet verified live - confirmed only against the documentation:
+
+- The CurioCaster, Podverse and Podfriend URL patterns (from the platform-links guide)
 - The Podcast Index response field names (`feed.id`, `feed.podcastGuid`, `feed.itunesId`, `episode.id`, `items[]`, `feeds[]`)
 - App favicons at `https://{domain}/favicon.ico` - override any icon in settings if one doesn't load
