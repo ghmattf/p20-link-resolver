@@ -1,6 +1,6 @@
 # Podcast 2.0 Link Resolver
 
-A WordPress plugin that renders smart links to a podcast show or a single episode in **Podcasting 2.0 apps only** (Fountain, CurioCaster, Podverse, Podfriend). A pod.link alternative for general podcasts, modelled on V4V MusicLink Pro.
+A WordPress plugin that renders smart links to a podcast show or a single episode in **Podcasting 2.0 apps only** (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy). A pod.link alternative for general podcasts, modelled on V4V MusicLink Pro.
 
 Metadata (title, author, artwork, ids) comes from the [Podcast Index API](https://api.podcastindex.org) (free key + secret).
 
@@ -27,7 +27,7 @@ Inline placements work in any post or page:
 
 ## How each app is linked
 
-Patterns come from the Podcast Index's [podcast-platform-links](https://github.com/Podcastindex-org/podcast-platform-links) guide, except Fountain (see below).
+Patterns come from the Podcast Index's [podcast-platform-links](https://github.com/Podcastindex-org/podcast-platform-links) guide, except Fountain (see below) and BoostMeBuddy (the app's own guid query params).
 
 | App | Show link | Episode link |
 |---|---|---|
@@ -35,6 +35,7 @@ Patterns come from the Podcast Index's [podcast-platform-links](https://github.c
 | CurioCaster | `curiocaster.com/podcast/pi{PI feed id}` | none documented - opens the show |
 | Podverse | `api.podverse.fm/api/v1/podcast/podcastindex/{PI feed id}` | needs a Podverse-internal id - opens the show |
 | Podfriend | `podfriend.com/podcast/{Apple id}` | `podfriend.com/podcast/{Apple id}/{encodeURIComponent(episode guid)}` |
+| BoostMeBuddy | `www.boostmebuddy.com/?podcast={podcast:guid}` | `www.boostmebuddy.com/?podcast={podcast:guid}&episode={episode guid}` |
 
 Podfriend is keyed on the Apple Podcasts id, so it is hidden for shows that have none. When an episode was requested but an app can only link the show, its button says "(opens the show)". If the Podcast Index doesn't know the episode yet, every app falls back to the show and a notice explains why.
 
@@ -64,6 +65,7 @@ Like the music plugin, tables are created on activation and again on the next ad
 Verified live on 2026-11-12:
 
 - Fountain: guid → id lookup (show and episode, no API key) and the rendered `fountain.fm/show/{id}` / `fountain.fm/episode/{id}` pages; the guide's numeric patterns confirmed dead (client-side 404)
+- BoostMeBuddy: the show and episode query-param URLs both render the right target; its site has no `/favicon.ico`, so the plugin defaults its icon to `https://www.boostmebuddy.com/icons/buddy/favicon.svg`
 
 Not yet verified live - confirmed only against the documentation:
 

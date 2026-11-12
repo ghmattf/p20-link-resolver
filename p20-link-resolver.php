@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Podcast 2.0 Link Resolver
- * Description: pod.link-style smart links for podcasts, limited to Podcasting 2.0 apps (Fountain, CurioCaster, Podverse, Podfriend). Link to a show or a single episode by its podcast:guid / episode guid; metadata comes from the Podcast Index API. Shortcode: [p20link].
+ * Description: pod.link-style smart links for podcasts, limited to Podcasting 2.0 apps (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy). Link to a show or a single episode by its podcast:guid / episode guid; metadata comes from the Podcast Index API. Shortcode: [p20link].
  * Version: 0.1.1
  * Requires at least: 5.3
  * Requires PHP: 7.4
@@ -625,21 +625,25 @@ class P20_Link_Resolver {
 
 	private function app_registry() {
 		return array(
-			'fountain'    => array( 'label' => 'Fountain', 'domain' => 'fountain.fm' ),
-			'curiocaster' => array( 'label' => 'CurioCaster', 'domain' => 'curiocaster.com' ),
-			'podverse'    => array( 'label' => 'Podverse', 'domain' => 'podverse.fm' ),
-			'podfriend'   => array( 'label' => 'Podfriend', 'domain' => 'podfriend.com' ),
+			'fountain'     => array( 'label' => 'Fountain', 'domain' => 'fountain.fm' ),
+			'curiocaster'  => array( 'label' => 'CurioCaster', 'domain' => 'curiocaster.com' ),
+			'podverse'     => array( 'label' => 'Podverse', 'domain' => 'podverse.fm' ),
+			'podfriend'    => array( 'label' => 'Podfriend', 'domain' => 'podfriend.com' ),
+			'boostmebuddy' => array( 'label' => 'BoostMeBuddy', 'domain' => 'boostmebuddy.com', 'icon' => 'https://www.boostmebuddy.com/icons/buddy/favicon.svg' ),
 		);
 	}
 
 	/**
 	 * URL for one app, or null when it cannot be built from what we know.
 	 * 'episode' says whether the URL points at the episode (true) or at the
-	 * show (false). Patterns: Podcast Index "podcast-platform-links".
+	 * show (false). Patterns: Podcast Index "podcast-platform-links", except
+	 * Fountain (opaque ids, see fountain_id()) and BoostMeBuddy (the app's
+	 * own guid query params).
 	 */
 	private function app_link( $slug, $r ) {
 		$feed_id  = (int) $r['feed_id'];
 		$ep_guid  = (string) $r['episode_guid'];
+		$pguid    = (string) $r['podcast_guid'];
 		$has_ep   = $r['episode_wanted'] && ! $r['episode_missing'] && '' !== $ep_guid;
 
 		switch ( $slug ) {
@@ -651,7 +655,6 @@ class P20_Link_Resolver {
 				// (soft failure / spent budget) omits the button rather
 				// than sending visitors to the wrong page; a show Fountain
 				// doesn't know omits the button too.
-				$pguid = (string) $r['podcast_guid'];
 				if ( '' === $pguid ) {
 					return null;
 				}
@@ -688,6 +691,18 @@ class P20_Link_Resolver {
 					return array( 'url' => $url . '/' . self::encode_uri_component( $ep_guid ), 'episode' => true );
 				}
 				return array( 'url' => $url, 'episode' => false );
+
+			case 'boostmebuddy':
+				// The app's own query-param pattern, keyed on the guids
+				// (not in the platform-links guide; verified live 2026-11-12).
+				if ( '' === $pguid ) {
+					return null;
+				}
+				$url = 'https://www.boostmebuddy.com/?podcast=' . rawurlencode( $pguid );
+				if ( $has_ep ) {
+					$url .= '&episode=' . rawurlencode( $ep_guid );
+				}
+				return array( 'url' => $url, 'episode' => $has_ep );
 		}
 		return null;
 	}
@@ -702,9 +717,13 @@ class P20_Link_Resolver {
 		return (bool) $this->get_app_config( $slug )['enabled'];
 	}
 
-	private function app_icon( $slug, $domain ) {
+	private function app_icon( $slug, $reg ) {
 		$cfg = $this->get_app_config( $slug );
-		return ! empty( $cfg['icon_url'] ) ? $cfg['icon_url'] : 'https://' . $domain . '/favicon.ico';
+		if ( ! empty( $cfg['icon_url'] ) ) {
+			return $cfg['icon_url'];
+		}
+		// Registry 'icon' overrides the generic favicon (apps without one).
+		return ! empty( $reg['icon'] ) ? $reg['icon'] : 'https://' . $reg['domain'] . '/favicon.ico';
 	}
 
 	private function app_icon_bg( $slug ) {
@@ -819,7 +838,7 @@ class P20_Link_Resolver {
 				'url'      => $link['url'],
 				'label'    => $reg['label'],
 				'episode'  => $link['episode'],
-				'icon_url' => $this->app_icon( $slug, $reg['domain'] ),
+				'icon_url' => $this->app_icon( $slug, $reg ),
 			);
 		}
 

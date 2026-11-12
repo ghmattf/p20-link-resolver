@@ -134,6 +134,9 @@ check( 'podverse show', 'https://api.podverse.fm/api/v1/podcast/podcastindex/750
 check( 'podfriend show', 'https://podfriend.com/podcast/1234' === call( $o, 'app_link', 'podfriend', $base )['url'] );
 $noapple = $base; $noapple['itunes_id'] = 0;
 check( 'podfriend omitted without apple id', null === call( $o, 'app_link', 'podfriend', $noapple ) );
+check( 'boostmebuddy show', 'https://www.boostmebuddy.com/?podcast=g' === call( $o, 'app_link', 'boostmebuddy', $base )['url'] );
+$noguid = $base; $noguid['podcast_guid'] = '';
+check( 'boostmebuddy omitted without podcast guid', null === call( $o, 'app_link', 'boostmebuddy', $noguid ) );
 
 $ep = $base;
 $ep['episode_wanted'] = true; $ep['episode_guid'] = 'PC2084/a b'; $ep['pi_episode_id'] = 16795090;
@@ -145,6 +148,11 @@ $l = call( $o, 'app_link', 'curiocaster', $ep );
 check( 'curiocaster episode degrades to show', ! $l['episode'] && 'https://curiocaster.com/podcast/pi75075' === $l['url'] );
 $l = call( $o, 'app_link', 'podverse', $ep );
 check( 'podverse episode degrades to show', ! $l['episode'] );
+$l = call( $o, 'app_link', 'boostmebuddy', $ep );
+check( 'boostmebuddy episode link', 'https://www.boostmebuddy.com/?podcast=g&episode=PC2084%2Fa%20b' === $l['url'] && $l['episode'] );
+$miss_ep = $ep; $miss_ep['episode_missing'] = true;
+$l = call( $o, 'app_link', 'boostmebuddy', $miss_ep );
+check( 'boostmebuddy missing episode degrades to show', ! $l['episode'] && 'https://www.boostmebuddy.com/?podcast=g' === $l['url'] );
 $missing = $ep; $missing['episode_missing'] = true;
 $l = call( $o, 'app_link', 'fountain', $missing );
 check( 'missing episode -> fountain show link', 'https://fountain.fm/show/AbCdShow123' === $l['url'] && ! $l['episode'] );
@@ -267,7 +275,7 @@ $GLOBALS['http_mock'] = array(
 );
 $GLOBALS['transients'] = array();
 $html = $o->render( array( 'show' => 'abc-guid', 'episode' => 'PC2084' ) );
-check( 'render: 4 app buttons', 4 === substr_count( $html, 'class="p20link-item ' ) );
+check( 'render: 5 app buttons', 5 === substr_count( $html, 'class="p20link-item ' ) );
 check( 'render: episode title shown', false !== strpos( $html, 'Ep 1' ) );
 check( 'render: fountain episode href', false !== strpos( $html, 'https://fountain.fm/episode/EpRender1' ) );
 check( 'render: degraded apps flagged', substr_count( $html, '(opens the show)' ) === 2 );
@@ -279,7 +287,7 @@ check( 'render header=false hides title', false === strpos( $html, 'p20link-titl
 // disabled app
 $GLOBALS['opts']['p20link_apps'] = array( 'fountain' => array( 'enabled' => false ) );
 $html = $o->render( array( 'show' => 'abc-guid' ) );
-check( 'disabled app hidden', false === strpos( $html, 'fountain.fm/show' ) && 3 === substr_count( $html, 'class="p20link-item ' ) );
+check( 'disabled app hidden', false === strpos( $html, 'fountain.fm/show' ) && 4 === substr_count( $html, 'class="p20link-item ' ) );
 
 // no show -> search UI; no creds -> message
 $html = $o->render( array() );
@@ -296,12 +304,13 @@ check( 'unknown show -> search UI + "not found"', false !== strpos( $html, 'Podc
 
 // sanitize apps
 $clean = $o->sanitize_apps_settings( array(
-	'fountain'    => array( 'enabled' => '1', 'order' => '3', 'icon_bg' => '#ff0000' ),
-	'curiocaster' => array( 'order' => '0' ),
-	'podverse'    => array( 'enabled' => '1', 'order' => '1', 'icon_bg_none' => '1', 'icon_bg' => '#00ff00' ),
-	'podfriend'   => array( 'enabled' => '1', 'order' => '2' ),
+	'fountain'     => array( 'enabled' => '1', 'order' => '3', 'icon_bg' => '#ff0000' ),
+	'curiocaster'  => array( 'order' => '0' ),
+	'podverse'     => array( 'enabled' => '1', 'order' => '1', 'icon_bg_none' => '1', 'icon_bg' => '#00ff00' ),
+	'podfriend'    => array( 'enabled' => '1', 'order' => '2' ),
+	'boostmebuddy' => array( 'enabled' => '1', 'order' => '4' ),
 ) );
-check( 'sanitize: orders normalised 0..n-1', array( 0, 1, 2, 3 ) === array_values( array_map( function ( $c ) { return $c['order']; }, array( $clean['curiocaster'], $clean['podverse'], $clean['podfriend'], $clean['fountain'] ) ) ) );
+check( 'sanitize: orders normalised 0..n-1', array( 0, 1, 2, 3, 4 ) === array_values( array_map( function ( $c ) { return $c['order']; }, array( $clean['curiocaster'], $clean['podverse'], $clean['podfriend'], $clean['fountain'], $clean['boostmebuddy'] ) ) ) );
 check( 'sanitize: "None" beats colour', '' === $clean['podverse']['icon_bg'] && '#ff0000' === $clean['fountain']['icon_bg'] );
 check( 'sanitize: unchecked app disabled', false === $clean['curiocaster']['enabled'] );
 

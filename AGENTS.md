@@ -69,7 +69,7 @@ harness doesn't stub yet, add the stub to the harness.
 ## External facts and where they came from
 
 - **Podcast Index API**: base `https://api.podcastindex.org/api/1.0`. Auth headers: `User-Agent`, `X-Auth-Key`, `X-Auth-Date` (unix time), `Authorization` = `sha1(key . secret . time)`. Endpoints used: `podcasts/byguid?guid=`, `podcasts/byfeedid?id=`, `episodes/byguid?guid=&feedid=`, `episodes/byfeedid?id=&max=`, `search/byterm?q=&max=`. Source of truth is the OpenAPI source in [`Podcastindex-org/docs-api`](https://github.com/Podcastindex-org/docs-api) under `api_src/` (paths in `api_src/paths/**`, fields in `api_src/components/**`).
-- **App URL patterns**: [`Podcastindex-org/podcast-platform-links`](https://github.com/Podcastindex-org/podcast-platform-links) `README.md` (show and episode tables). `app_link()` mirrors it - **except Fountain** (see Gotchas). If that guide changes, update `app_link()`, the README table and the tests together.
+- **App URL patterns**: [`Podcastindex-org/podcast-platform-links`](https://github.com/Podcastindex-org/podcast-platform-links) `README.md` (show and episode tables). `app_link()` mirrors it - **except Fountain** (see Gotchas) and **BoostMeBuddy** (the app's own `?podcast=&episode=` guid params, both URLs verified live 2026-11-12; its site has no `/favicon.ico`, so the registry carries a default `icon`). If that guide changes, update `app_link()`, the README table and the tests together.
 - The Podcast Index `feed.id` is what the guide calls `podcastIndexShowID`; `episode.id` is `podcastIndexEpisodeID`; `feed.itunesId` is `appleID`.
 
 ## Gotchas
