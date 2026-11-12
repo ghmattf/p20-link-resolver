@@ -38,7 +38,7 @@ Patterns come from the Podcast Index's [podcast-platform-links](https://github.c
 
 Podfriend is keyed on the Apple Podcasts id, so it is hidden for shows that have none. When an episode was requested but an app can only link the show, its button says "(opens the show)". If the Podcast Index doesn't know the episode yet, every app falls back to the show and a notice explains why.
 
-Fountain's public URLs use **opaque Fountain ids**, not Podcast Index ids - the guide's numeric `fountain.fm/show|episode/{PI id}` patterns render Fountain's client-side 404 (verified live 2026-11-12). The plugin resolves guid → id through Fountain's public [lookup API](https://fountain.fm/docs/endpoints/search/search-lookup.md) (`POST api.fountain.fm/v1/search/lookup`, no key required) and caches the result. An episode Fountain doesn't know yet opens the show; a show it doesn't know omits the button. Nothing unofficial or fragile - unlike the music plugin's Fountain integration, no build fingerprint is involved.
+Fountain's public URLs use **opaque Fountain ids**, not Podcast Index ids - the guide's numeric `fountain.fm/show|episode/{PI id}` patterns render Fountain's client-side 404 (verified live 2026-11-12). The plugin resolves guid → id through Fountain's public [lookup API](https://fountain.fm/docs/endpoints/search/search-lookup.md) (`POST api.fountain.fm/v1/search/lookup`, no key required) and caches the result. An episode Fountain doesn't know yet opens the show; an unreliable lookup response (network error, 5xx) omits the button rather than guessing a target; a show Fountain doesn't know omits the button. Nothing unofficial or fragile - unlike the music plugin's Fountain integration, no build fingerprint is involved.
 
 ## Features
 

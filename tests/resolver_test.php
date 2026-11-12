@@ -163,9 +163,9 @@ $GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 200, 'body' => json_
 check( 'fountain empty hits -> miss', '' === call( $o, 'fountain_id', 'show', 'never-there' ) );
 check( 'fountain definitive miss TTL', HOUR_IN_SECONDS === call( $o, 'fountain_ttl' ) );
 
-// 5xx = unreliable (remembered for 30 seconds only).
+// 5xx = unreliable (remembered for 30 seconds only, never a definitive miss).
 $GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 503, 'body' => '' );
-check( 'fountain 503 -> miss', '' === call( $o, 'fountain_id', 'show', 'flaky-guid' ) );
+check( 'fountain 503 -> uncertain (null, not "")', null === call( $o, 'fountain_id', 'show', 'flaky-guid' ) );
 check( 'fountain soft miss TTL', 30 === call( $o, 'fountain_ttl' ) );
 
 // A hit of the wrong type never becomes a URL.
@@ -182,7 +182,7 @@ for ( $i = 0; $i < 60; $i++ ) {
 }
 $GLOBALS['http_mock']['api.fountain.fm'] = $mk_hit( array( array( '_id' => 'BudgetId1', '_type' => 'SHOW' ) ) );
 $n = count( $GLOBALS['http_log'] );
-check( 'fountain budget exhausted -> empty id', '' === call( $o, 'fountain_id', 'show', 'budget-guid' ) );
+check( 'fountain budget exhausted -> uncertain', null === call( $o, 'fountain_id', 'show', 'budget-guid' ) );
 check( 'fountain budget exhausted -> no HTTP', count( $GLOBALS['http_log'] ) === $n );
 check( 'fountain budget exhausted -> nothing remembered', false === get_transient( 'p20l_fnt_1_' . md5( 'show|budget-guid|' ) ) );
 $rp->setValue( $o, false );
@@ -193,6 +193,20 @@ foreach ( array_keys( $GLOBALS['transients'] ) as $tk ) {
 		unset( $GLOBALS['transients'][ $tk ] );
 	}
 }
+
+// A DEFINITIVE episode miss degrades to the show; an unreliable one omits
+// the button - never a wrong-target link (regression: live report 2026-11-12).
+$GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 200, 'body' => json_encode( array( 'hits' => array() ) ) );
+$dm = $base; $dm['episode_wanted'] = true; $dm['episode_guid'] = 'def-miss-guid';
+$l = call( $o, 'app_link', 'fountain', $dm );
+check( 'fountain definitive episode miss -> show fallback', is_array( $l ) && 'https://fountain.fm/show/AbCdShow123' === $l['url'] && ! $l['episode'] );
+
+$GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 503, 'body' => '' );
+$unc = $base; $unc['episode_wanted'] = true; $unc['episode_guid'] = 'soft-guid';
+check( 'fountain unreliable episode miss -> button omitted', null === call( $o, 'app_link', 'fountain', $unc ) );
+$n = count( $GLOBALS['http_log'] );
+check( 'fountain soft miss cached as uncertain, not definitive', null === call( $o, 'fountain_id', 'episode', 'soft-guid', 'g' ) && count( $GLOBALS['http_log'] ) === $n );
+unset( $GLOBALS['http_mock']['api.fountain.fm'] );
 
 // --- resolution + caching (mocked API) ---
 $GLOBALS['http_log'] = array(); // Fountain lookups above already logged.

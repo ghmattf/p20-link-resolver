@@ -29,8 +29,9 @@
  * Fountain is the exception: its public URLs use opaque Fountain ids, so show
  * and episode links are resolved from the podcast:guid / episode guid through
  * Fountain's public lookup API (api.fountain.fm, no key required) and cached
- * in transients. An episode Fountain doesn't know yet opens the show; a show
- * it doesn't know omits the button.
+ * in transients. An episode Fountain doesn't know yet opens the show; an
+ * unreliable lookup response omits the button rather than guessing; a show
+ * Fountain doesn't know omits the button.
  *
  * CACHING: one row per show/episode in {prefix}p20link_cache. Stale rows keep
  * serving while a refresh runs on the shutdown hook, so a Podcast Index outage
@@ -393,7 +394,10 @@ class P20_Link_Resolver {
 	 * @param string $kind   'show' or 'episode'.
 	 * @param string $guid   podcast:guid (show) or RSS item guid (episode).
 	 * @param string $parent podcast:guid of the feed; required for episodes.
-	 * @return string The Fountain id, or '' when not (yet) known.
+	 * @return string|null Fountain id; '' = definitive miss (Fountain doesn't
+	 *                      have it); null = unreliable answer (soft failure or
+	 *                      spent budget) - callers must never treat null as
+	 *                      "Fountain doesn't have it".
 	 */
 	private function fountain_id( $kind, $guid, $parent = '' ) {
 		$guid   = (string) $guid;
@@ -407,18 +411,24 @@ class P20_Link_Resolver {
 		$key = 'p20l_fnt_' . self::FOUNTAIN_SCHEMA . '_' . md5( $kind . '|' . $guid . '|' . $parent );
 		$cached = get_transient( $key );
 		if ( false !== $cached ) {
-			return (string) $cached;
+			return '~' === $cached ? null : (string) $cached;
 		}
 		// Budget rejection happens before any HTTP and remembers nothing, so
 		// the window - not the cache - is what limits a burst (same policy
 		// as the Podcast Index resolves in resolve_release()).
 		if ( ! $this->may_call_upstream() ) {
-			return '';
+			return null;
 		}
 		$id = $this->fountain_lookup( $kind, $guid, $parent );
-		$id = is_string( $id ) ? $id : '';
-		set_transient( $key, $id, '' !== $id ? self::FOUNTAIN_HIT_TTL : $this->fountain_ttl() );
-		return $id;
+		if ( is_string( $id ) ) {
+			set_transient( $key, $id, '' !== $id ? self::FOUNTAIN_HIT_TTL : $this->fountain_ttl() );
+			return $id;
+		}
+		// Unreliable answer: remember briefly under a value outside the id
+		// alphabet ('~' is not in [A-Za-z0-9_-]) so a soft miss can never be
+		// read back as a definitive one and pin a wrong-target fallback.
+		set_transient( $key, '~', $this->fountain_ttl() );
+		return null;
 	}
 
 	/**
@@ -636,23 +646,29 @@ class P20_Link_Resolver {
 			case 'fountain':
 				// Opaque Fountain ids must be looked up from the guids
 				// (see fountain_id()); the platform-links guide's numeric
-				// patterns 404. A missed episode degrades to the show
-				// ("opens the show" in the UI); a missed show omits the
-				// button (graceful degradation).
+				// patterns 404. A DEFINITIVE episode miss degrades to the
+				// show ("opens the show" in the UI); an unreliable lookup
+				// (soft failure / spent budget) omits the button rather
+				// than sending visitors to the wrong page; a show Fountain
+				// doesn't know omits the button too.
 				$pguid = (string) $r['podcast_guid'];
-				if ( '' !== $pguid ) {
-					if ( $has_ep ) {
-						$ep_f = $this->fountain_id( 'episode', $ep_guid, $pguid );
-						if ( '' !== $ep_f ) {
-							return array( 'url' => 'https://fountain.fm/episode/' . $ep_f, 'episode' => true );
-						}
-					}
-					$show_f = $this->fountain_id( 'show', $pguid );
-					if ( '' !== $show_f ) {
-						return array( 'url' => 'https://fountain.fm/show/' . $show_f, 'episode' => false );
-					}
+				if ( '' === $pguid ) {
+					return null;
 				}
-				return null;
+				if ( $has_ep ) {
+					$ep_f = $this->fountain_id( 'episode', $ep_guid, $pguid );
+					if ( is_string( $ep_f ) && '' !== $ep_f ) {
+						return array( 'url' => 'https://fountain.fm/episode/' . $ep_f, 'episode' => true );
+					}
+					if ( null === $ep_f ) {
+						return null; // Unreliable - never a wrong-target link.
+					}
+					// Definitive miss: fall through to the show link.
+				}
+				$show_f = $this->fountain_id( 'show', $pguid );
+				return ( is_string( $show_f ) && '' !== $show_f )
+					? array( 'url' => 'https://fountain.fm/show/' . $show_f, 'episode' => false )
+					: null;
 
 			case 'curiocaster':
 				// No episode pattern is documented for CurioCaster.
