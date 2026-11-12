@@ -29,9 +29,9 @@
  * Fountain is the exception: its public URLs use opaque Fountain ids, so show
  * and episode links are resolved from the podcast:guid / episode guid through
  * Fountain's public lookup API (api.fountain.fm, no key required) and cached
- * in transients. An episode Fountain doesn't know yet opens the show; an
- * unreliable lookup response omits the button rather than guessing; a show
- * Fountain doesn't know omits the button.
+ * in transients. Links degrade episode -> show -> fountain.fm/discover, so
+ * the Fountain button always appears and never opens the wrong episode; the
+ * UI note says what it opens when it can't open the requested episode.
  *
  * CACHING: one row per show/episode in {prefix}p20link_cache. Stale rows keep
  * serving while a refresh runs on the shutdown hook, so a Podcast Index outage
@@ -426,7 +426,8 @@ class P20_Link_Resolver {
 		}
 		// Unreliable answer: remember briefly under a value outside the id
 		// alphabet ('~' is not in [A-Za-z0-9_-]) so a soft miss can never be
-		// read back as a definitive one and pin a wrong-target fallback.
+		// read back as a definitive one and pin the fallback for a full
+		// FAIL_TTL hour instead of retrying in 30 s.
 		set_transient( $key, '~', $this->fountain_ttl() );
 		return null;
 	}
@@ -650,28 +651,25 @@ class P20_Link_Resolver {
 			case 'fountain':
 				// Opaque Fountain ids must be looked up from the guids
 				// (see fountain_id()); the platform-links guide's numeric
-				// patterns 404. A DEFINITIVE episode miss degrades to the
-				// show ("opens the show" in the UI); an unreliable lookup
-				// (soft failure / spent budget) omits the button rather
-				// than sending visitors to the wrong page; a show Fountain
-				// doesn't know omits the button too.
-				if ( '' === $pguid ) {
-					return null;
-				}
-				if ( $has_ep ) {
-					$ep_f = $this->fountain_id( 'episode', $ep_guid, $pguid );
-					if ( is_string( $ep_f ) && '' !== $ep_f ) {
-						return array( 'url' => 'https://fountain.fm/episode/' . $ep_f, 'episode' => true );
+				// patterns 404. Degradation chain (user decision
+				// 2026-11-12): episode -> show -> fountain.fm/discover, so
+				// the button always appears and never opens the wrong
+				// episode; the UI note says what it opens instead.
+				if ( '' !== $pguid ) {
+					if ( $has_ep ) {
+						$ep_f = $this->fountain_id( 'episode', $ep_guid, $pguid );
+						if ( is_string( $ep_f ) && '' !== $ep_f ) {
+							return array( 'url' => 'https://fountain.fm/episode/' . $ep_f, 'episode' => true );
+						}
+						// Definitive miss or unreliable answer: show next.
 					}
-					if ( null === $ep_f ) {
-						return null; // Unreliable - never a wrong-target link.
+					$show_f = $this->fountain_id( 'show', $pguid );
+					if ( is_string( $show_f ) && '' !== $show_f ) {
+						return array( 'url' => 'https://fountain.fm/show/' . $show_f, 'episode' => false );
 					}
-					// Definitive miss: fall through to the show link.
 				}
-				$show_f = $this->fountain_id( 'show', $pguid );
-				return ( is_string( $show_f ) && '' !== $show_f )
-					? array( 'url' => 'https://fountain.fm/show/' . $show_f, 'episode' => false )
-					: null;
+				// No guid, unknown show, or unreliable show lookup.
+				return array( 'url' => 'https://fountain.fm/discover', 'episode' => false, 'note' => 'discover' );
 
 			case 'curiocaster':
 				// No episode pattern is documented for CurioCaster.
@@ -920,7 +918,7 @@ class P20_Link_Resolver {
 								<img class="p20link-icon" src="<?php echo esc_url( $link['icon_url'] ); ?>" alt="" width="40" height="40" loading="lazy"<?php echo '' !== $bg ? ' style="background-color:' . esc_attr( $bg ) . '"' : ''; ?> />
 								<span class="p20link-app-label"><?php echo esc_html( $link['label'] ); ?></span>
 								<?php if ( $r['episode_wanted'] && ! $link['episode'] ) : ?>
-									<span class="p20link-app-note"><?php esc_html_e( '(opens the show)', 'p20-link' ); ?></span>
+									<span class="p20link-app-note"><?php echo esc_html( isset( $link['note'] ) && 'discover' === $link['note'] ? __( '(opens Fountain)', 'p20-link' ) : __( '(opens the show)', 'p20-link' ) ); ?></span>
 								<?php endif; ?>
 							</a>
 						</li>

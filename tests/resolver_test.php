@@ -202,8 +202,9 @@ foreach ( array_keys( $GLOBALS['transients'] ) as $tk ) {
 	}
 }
 
-// A DEFINITIVE episode miss degrades to the show; an unreliable one omits
-// the button - never a wrong-target link (regression: live report 2026-11-12).
+// Degradation chain (user decision 2026-11-12): episode -> show ->
+// fountain.fm/discover; unreliable lookups degrade the same way definitive
+// ones do, so the button never disappears (regression: live report 2026-11-12).
 $GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 200, 'body' => json_encode( array( 'hits' => array() ) ) );
 $dm = $base; $dm['episode_wanted'] = true; $dm['episode_guid'] = 'def-miss-guid';
 $l = call( $o, 'app_link', 'fountain', $dm );
@@ -211,9 +212,21 @@ check( 'fountain definitive episode miss -> show fallback', is_array( $l ) && 'h
 
 $GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 503, 'body' => '' );
 $unc = $base; $unc['episode_wanted'] = true; $unc['episode_guid'] = 'soft-guid';
-check( 'fountain unreliable episode miss -> button omitted', null === call( $o, 'app_link', 'fountain', $unc ) );
+$l = call( $o, 'app_link', 'fountain', $unc );
+check( 'fountain unreliable episode miss -> show fallback', is_array( $l ) && 'https://fountain.fm/show/AbCdShow123' === $l['url'] && ! $l['episode'] );
 $n = count( $GLOBALS['http_log'] );
 check( 'fountain soft miss cached as uncertain, not definitive', null === call( $o, 'fountain_id', 'episode', 'soft-guid', 'g' ) && count( $GLOBALS['http_log'] ) === $n );
+
+// Last resort: unknown show, no guid, or unreliable show lookup -> discover.
+$GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 200, 'body' => json_encode( array( 'hits' => array() ) ) );
+$unk = $base; $unk['podcast_guid'] = 'never-seen-show';
+$l = call( $o, 'app_link', 'fountain', $unk );
+check( 'fountain unknown show -> discover', is_array( $l ) && 'https://fountain.fm/discover' === $l['url'] && ! $l['episode'] && isset( $l['note'] ) && 'discover' === $l['note'] );
+$ng = $base; $ng['podcast_guid'] = '';
+check( 'fountain without podcast guid -> discover', 'https://fountain.fm/discover' === call( $o, 'app_link', 'fountain', $ng )['url'] );
+$GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 503, 'body' => '' );
+$fs = $base; $fs['podcast_guid'] = 'flaky-show';
+check( 'fountain unreliable show lookup -> discover', 'https://fountain.fm/discover' === call( $o, 'app_link', 'fountain', $fs )['url'] );
 unset( $GLOBALS['http_mock']['api.fountain.fm'] );
 
 // --- resolution + caching (mocked API) ---
@@ -279,6 +292,11 @@ check( 'render: 5 app buttons', 5 === substr_count( $html, 'class="p20link-item 
 check( 'render: episode title shown', false !== strpos( $html, 'Ep 1' ) );
 check( 'render: fountain episode href', false !== strpos( $html, 'https://fountain.fm/episode/EpRender1' ) );
 check( 'render: degraded apps flagged', substr_count( $html, '(opens the show)' ) === 2 );
+$nr = $ep; $nr['episode_title'] = 'T';
+$nh = call( $o, 'render_html', array(
+	'fountain' => array( 'url' => 'https://fountain.fm/discover', 'label' => 'Fountain', 'episode' => false, 'icon_url' => '', 'note' => 'discover' ),
+), $nr, false, 'S', 'A', '' );
+check( 'render: discover fallback note', false !== strpos( $nh, '(opens Fountain)' ) );
 check( 'render: no share/url param leak of API secret', false === strpos( $html, 'SECRET' ) );
 
 $html = $o->render( array( 'show' => 'abc-guid', 'header' => 'false' ) );

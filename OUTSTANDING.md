@@ -61,5 +61,6 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 ## Closed decisions
 
 - **One edition only** (no standard/Pro split): decided by the user, 2026-11-11.
-- **Apps limited to Podcasting 2.0 apps** (Fountain, CurioCaster, Podverse, Podfriend); no Apple/Spotify-style mainstream targets.
+- **Apps limited to Podcasting 2.0 apps** (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy); no Apple/Spotify-style mainstream targets.
 - **Link level is show + episode** (not show-only).
+- **Fountain always renders a button**, degrading episode → show → `fountain.fm/discover` (user decision 2026-11-12); supersedes 0.1.2's "omit the button on an unreliable lookup" policy.
