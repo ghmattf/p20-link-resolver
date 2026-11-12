@@ -927,6 +927,10 @@ class P20_Link_Resolver {
 			<?php endif; ?>
 
 			<p class="p20link-footer">
+				<?php esc_html_e( 'Share a show with', 'p20-link' ); ?>
+				<a href="https://phafe.com/podcastlinker" target="_blank" rel="noopener noreferrer">PodcastLinker</a>
+			</p>
+			<p class="p20link-footer">
 				<?php esc_html_e( 'Powered by', 'p20-link' ); ?>
 				<a href="https://podcastindex.org" target="_blank" rel="noopener noreferrer">Podcast Index</a>
 			</p>
@@ -1228,6 +1232,7 @@ class P20_Link_Resolver {
 			.p20link-app-note { color: #666; font-size: 0.85em; }
 			.p20link-error { color: #a00; }
 			.p20link-footer { margin-top: 1.25em; font-size: 0.85em; color: #444; }
+			.p20link-footer + .p20link-footer { margin-top: 0.3em; }
 			.p20link-footer a { color: inherit; text-decoration: underline; }
 			.p20link-search-title { font-weight: 700; font-size: 1.8em; line-height: 1.2; margin: 0 0 0.2em; }
 			.p20link-search-subtitle { color: #666; margin: 0 0 1.1em; }

@@ -298,6 +298,7 @@ $nh = call( $o, 'render_html', array(
 ), $nr, false, 'S', 'A', '' );
 check( 'render: discover fallback note', false !== strpos( $nh, '(opens Fountain)' ) );
 check( 'render: no share/url param leak of API secret', false === strpos( $html, 'SECRET' ) );
+check( 'render: PodcastLinker promo above footer', false !== strpos( $html, 'Share a show with' ) && false !== strpos( $html, 'href="https://phafe.com/podcastlinker"' ) && strpos( $html, 'phafe.com/podcastlinker' ) < strpos( $html, 'podcastindex.org' ) );
 
 $html = $o->render( array( 'show' => 'abc-guid', 'header' => 'false' ) );
 check( 'render header=false hides title', false === strpos( $html, 'p20link-title' ) );
