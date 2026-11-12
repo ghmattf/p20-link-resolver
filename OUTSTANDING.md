@@ -58,6 +58,12 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **Where:** `p20-link-resolver.php` plugin header `Description:` (line 4).
 - **Plan:** append a compact example to the Description, e.g. `Shortcode: [p20link] or [p20link show="guid" episode="guid"]` (watch overall length - WP truncates long descriptions in the list view), and keep README in sync if the wording changes.
 
+### 11. Live test: Fountain episode link opened the show (phafe.com)
+- **Status:** Open
+- **What:** report from Matt, 2026-11-12: on `https://phafe.com/podcast2-0linker/?show=31e6e997-df26-59d5-9301-1f5928809566&episode=c498fddf-ce54-4e1c-a967-4e84958108ad` the Fountain button opened the show instead of the episode. Verified after the report: the live render already emits `fountain.fm/episode/7KvnNqgwjVyooeb35qd1`, Fountain's lookup with exactly those guids returns that `EPISODE` id, and the page renders the correct episode - so the bad click hit a fallback window: an unreliable (soft/budget) episode-lookup miss degrades to the cached show link for up to 30 s (`fountain_id()` stored soft misses as `''`, indistinguishable from a definitive "not in Fountain"), or the render was served from a pre-deploy cache.
+- **Where:** `app_link()` fountain case, `fountain_id()` miss caching.
+- **Plan:** split miss kinds - definitive (200/404, Fountain genuinely lacks it) keeps the show fallback; unreliable (transport/5xx/budget) returns `null` and omits the button, never a wrong-target link; soft misses cached under a sentinel outside the id alphabet so they can't read as definitive. Tests for both paths; re-test the URL above after deploy.
+
 ## Closed decisions
 
 - **One edition only** (no standard/Pro split): decided by the user, 2026-11-11.
