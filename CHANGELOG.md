@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.3] - 2026-11-12
+
+- Fountain links always render a button now, degrading episode → show → `fountain.fm/discover`; the note says "(opens the show)" or "(opens Fountain)". Supersedes 0.1.2's "omit the button on an unreliable lookup" policy.
+- New footer line above "Powered by Podcast Index": "Share a show with PodcastLinker", linking to `https://phafe.com/podcastlinker`.
+
 ## [0.1.2] - 2026-11-12
 
 - Fountain: an unreliable episode lookup (transport error, 5xx, spent rate-limit budget) now omits the button instead of falling back to the show; only a definitive miss (HTTP 200/404 - Fountain genuinely lacks it) degrades to the show link. Soft misses are cached under a sentinel so they can never read as definitive.
