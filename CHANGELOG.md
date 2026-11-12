@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.2] - 2026-11-12
+
+- Fountain: an unreliable episode lookup (transport error, 5xx, spent rate-limit budget) now omits the button instead of falling back to the show; only a definitive miss (HTTP 200/404 - Fountain genuinely lacks it) degrades to the show link. Soft misses are cached under a sentinel so they can never read as definitive.
+- New target app: BoostMeBuddy - show and episode links via the app's own `?podcast={guid}` / `?podcast={guid}&episode={guid}` query params (both URLs verified live 2026-11-12). Its icon defaults to the site's SVG favicon because it serves no `/favicon.ico`.
+
 ## [0.1.1] - 2026-11-12
 
 - Fountain links fixed (show and episode): Fountain's public URLs use opaque ids, not the platform-links guide's dead numeric patterns (verified live 2026-11-12). Ids are now resolved from the `podcast:guid` / episode guid through Fountain's public lookup API (`api.fountain.fm`, no key required) and cached in transients; an unknown episode opens the show, an unknown show omits the button.
