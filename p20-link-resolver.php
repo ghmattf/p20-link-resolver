@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Podcast 2.0 Link Resolver
  * Description: pod.link-style smart links for podcasts, limited to Podcasting 2.0 apps (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy). Link to a show or a single episode by its podcast:guid / episode guid; metadata comes from the Podcast Index API. Shortcode: [p20link].
- * Version: 0.1.3
+ * Version: 0.1.4
  * Requires at least: 5.3
  * Requires PHP: 7.4
  * Author: Matt Finlay
@@ -45,7 +45,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class P20_Link_Resolver {
 
-	const VERSION             = '0.1.3';
+	const VERSION             = '0.1.4';
 	const PI_API              = 'https://api.podcastindex.org/api/1.0';
 	const REFRESH_DEFAULT     = 12;       // Hours between background refreshes.
 	const FAIL_TTL            = HOUR_IN_SECONDS;
@@ -80,10 +80,18 @@ class P20_Link_Resolver {
 	/** Per-request memo of cache-row reads. */
 	private $row_memo = array();
 
+	/** True while our own wp_head output buffer is open. */
+	private $og_buffered = false;
+
+	/** Our og/twitter meta HTML, held until the buffer closes (or emitted directly). */
+	private $og_meta_html = '';
+
 	public function __construct() {
 		add_shortcode( 'p20link', array( $this, 'render' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+		add_action( 'wp_head', array( $this, 'og_buffer_start' ), 0 );
 		add_action( 'wp_head', array( $this, 'output_social_preview_meta' ) );
+		add_action( 'wp_head', array( $this, 'og_buffer_end' ), 999 );
 		add_action( 'wp_ajax_p20link_search', array( $this, 'ajax_search' ) );
 		add_action( 'wp_ajax_nopriv_p20link_search', array( $this, 'ajax_search' ) );
 		add_action( 'wp_ajax_p20link_log_open', array( $this, 'ajax_log_open' ) );
@@ -970,12 +978,61 @@ class P20_Link_Resolver {
 	 * Social previews (Open Graph / Twitter Card)
 	 * ------------------------------------------------------------------ */
 
-	public function output_social_preview_meta() {
+	/** True when this request should own the page's social tags. */
+	private function wants_preview() {
 		if ( 'on' !== $this->opt( 'social_preview', 'on' ) || ! is_singular() || ! $this->has_credentials() ) {
-			return;
+			return false;
 		}
 		$post = get_post();
 		if ( ! $post || ! has_shortcode( $post->post_content, 'p20link' ) ) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Open a wp_head buffer when we are going to emit tags, so the theme's
+	 * (or an SEO plugin's) competing og:/twitter: metas can be dropped before
+	 * ours go out - scrapers that read the first og:description were getting
+	 * a blank theme one (Telegram report, OUTSTANDING #11).
+	 */
+	public function og_buffer_start() {
+		if ( ! $this->wants_preview() || '' === $this->get_arg( 'show' ) ) {
+			return;
+		}
+		ob_start();
+		$this->og_buffered  = true;
+		$this->og_meta_html = '';
+	}
+
+	/**
+	 * Close the buffer: strip every og:/twitter: meta the head accumulated,
+	 * then append our own set (only if we built one - a failed resolve leaves
+	 * the existing tags alone rather than blanking the preview).
+	 */
+	public function og_buffer_end() {
+		if ( ! $this->og_buffered ) {
+			return;
+		}
+		$this->og_buffered = false;
+		$html              = (string) ob_get_clean();
+		$ours              = $this->og_meta_html;
+		$this->og_meta_html = '';
+		if ( '' === $ours ) {
+			echo $html; // phpcs:ignore WordPress.Security.EscapeOutput
+			return;
+		}
+		$html = (string) preg_replace(
+			'#<meta\b[^>]*\b(?:property|name)\s*=\s*["\'](?:og|twitter):[^"\']*["\'][^>]*>\s*#i',
+			'',
+			$html
+		);
+		echo $html . $ours; // phpcs:ignore WordPress.Security.EscapeOutput
+	}
+
+	public function output_social_preview_meta() {
+		$this->og_meta_html = '';
+		if ( ! $this->wants_preview() ) {
 			return;
 		}
 		$show = $this->get_arg( 'show' );
@@ -1010,9 +1067,14 @@ class P20_Link_Resolver {
 			$meta[] = array( 'property', 'og:image', $image );
 			$meta[] = array( 'name', 'twitter:image', $image );
 		}
+		$html = '';
 		foreach ( $meta as $m ) {
 			$value = in_array( $m[1], array( 'og:url', 'og:image', 'twitter:image' ), true ) ? esc_url( $m[2] ) : esc_attr( $m[2] );
-			printf( "<meta %s=\"%s\" content=\"%s\" />\n", esc_attr( $m[0] ), esc_attr( $m[1] ), $value ); // phpcs:ignore WordPress.Security.EscapeOutput
+			$html .= sprintf( "<meta %s=\"%s\" content=\"%s\" />\n", esc_attr( $m[0] ), esc_attr( $m[1] ), $value ); // phpcs:ignore WordPress.Security.EscapeOutput
+		}
+		$this->og_meta_html = $html;
+		if ( ! $this->og_buffered ) {
+			echo $html; // phpcs:ignore WordPress.Security.EscapeOutput
 		}
 	}
 
