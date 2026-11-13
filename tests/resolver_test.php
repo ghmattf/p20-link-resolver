@@ -38,6 +38,10 @@ function esc_attr_e( $s ) { echo $s; }
 function get_permalink() { return 'https://example.test/podlink/'; }
 function sanitize_hex_color( $c ) { return preg_match( '/^#([0-9a-fA-F]{3}){1,2}$/', $c ) ? $c : ''; }
 function is_wp_error( $r ) { return $r instanceof WP_Error; }
+function is_singular() { return ! empty( $GLOBALS['is_singular'] ); }
+function get_post() { return isset( $GLOBALS['fake_post'] ) ? $GLOBALS['fake_post'] : null; }
+function has_shortcode( $content, $tag ) { return false !== strpos( (string) $content, '[' . $tag ); }
+function get_bloginfo( $k = '' ) { return 'Example Podcasts'; }
 class WP_Error {}
 function add_query_arg( $args, $url ) {
 	return $url . ( false === strpos( $url, '?' ) ? '?' : '&' ) . http_build_query( $args, '', '&', PHP_QUERY_RFC3986 );
@@ -333,6 +337,67 @@ $clean = $o->sanitize_apps_settings( array(
 check( 'sanitize: orders normalised 0..n-1', array( 0, 1, 2, 3, 4 ) === array_values( array_map( function ( $c ) { return $c['order']; }, array( $clean['curiocaster'], $clean['podverse'], $clean['podfriend'], $clean['fountain'], $clean['boostmebuddy'] ) ) ) );
 check( 'sanitize: "None" beats colour', '' === $clean['podverse']['icon_bg'] && '#ff0000' === $clean['fountain']['icon_bg'] );
 check( 'sanitize: unchecked app disabled', false === $clean['curiocaster']['enabled'] );
+
+// --- social preview buffer (OUTSTANDING #11: theme og duplicates) ---
+$GLOBALS['opts']['p20link_social_preview'] = 'on';
+$GLOBALS['is_singular']                    = true;
+$GLOBALS['fake_post']                      = (object) array( 'post_content' => 'x [p20link show="abc-guid"] y' );
+$_GET['show']                              = 'abc-guid';
+unset( $_GET['episode'] );
+// Drop spent rate-limit windows so the og resolve isn't throttled.
+foreach ( array_keys( $GLOBALS['transients'] ) as $tk ) {
+	if ( 0 === strpos( $tk, 'p20l_rl_' ) ) {
+		unset( $GLOBALS['transients'][ $tk ] );
+	}
+}
+
+check( 'wants_preview: on for singular shortcode page', true === call( $o, 'wants_preview' ) );
+$GLOBALS['is_singular'] = false;
+check( 'wants_preview: off when not singular', false === call( $o, 'wants_preview' ) );
+$GLOBALS['is_singular'] = true;
+$GLOBALS['fake_post']   = (object) array( 'post_content' => 'no shortcode' );
+check( 'wants_preview: off without shortcode', false === call( $o, 'wants_preview' ) );
+$GLOBALS['fake_post'] = (object) array( 'post_content' => '[p20link show="abc-guid"]' );
+
+// Buffer strips the theme's blank og:description but keeps non-og head tags.
+ob_start();
+$o->og_buffer_start();
+echo "<meta property=\"og:description\" content=\" \" />\n";
+echo "<meta name=\"twitter:card\" content=\"summary\" />\n";
+echo "<title>Theme Title</title>\n";
+$o->output_social_preview_meta();
+$o->og_buffer_end();
+$out = ob_get_clean();
+check( 'og buffer: our og:title emitted', false !== strpos( $out, 'og:title' ) && false !== strpos( $out, 'Podcasting 2.0' ) );
+check( 'og buffer: theme blank og:description stripped', false === strpos( $out, 'content=" "' ) && 1 === substr_count( $out, 'og:description' ) );
+check( 'og buffer: theme twitter card replaced', 1 === substr_count( $out, 'twitter:card' ) );
+check( 'og buffer: non-og head tags kept', false !== strpos( $out, '<title>Theme Title</title>' ) );
+$bp = new ReflectionProperty( $o, 'og_buffered' );
+$bp->setAccessible( true );
+check( 'og buffer: closed after end', false === $bp->getValue( $o ) );
+
+// No show arg -> no buffer opened, theme tags pass through untouched.
+unset( $_GET['show'] );
+ob_start();
+$o->og_buffer_start();
+echo "<meta property=\"og:description\" content=\" \" />\n";
+$o->og_buffer_end();
+$out = ob_get_clean();
+check( 'og buffer: skipped without show arg', false !== strpos( $out, 'content=" "' ) );
+$_GET['show'] = 'abc-guid';
+
+// Failed resolve -> our tags empty -> theme tags left alone (no blank strip).
+$_GET['show'] = 'nope-guid';
+$GLOBALS['http_mock'] = array( '/podcasts/byguid' => array( 'code' => 200, 'body' => json_encode( array( 'feed' => array() ) ) ) );
+ob_start();
+$o->og_buffer_start();
+echo "<meta property=\"og:description\" content=\" \" />\n";
+$o->output_social_preview_meta();
+$o->og_buffer_end();
+$out = ob_get_clean();
+check( 'og buffer: failed resolve keeps theme tags', false !== strpos( $out, 'content=" "' ) && false === strpos( $out, 'og:title' ) );
+unset( $_GET['show'], $GLOBALS['is_singular'], $GLOBALS['fake_post'] );
+$GLOBALS['opts']['p20link_social_preview'] = 'on';
 
 echo "\n$pass passed, $fail failed\n";
 exit( $fail ? 1 : 0 );

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.4] - 2026-11-13
+
+- Social previews: on `?show=` pages the `wp_head` output is now buffered so the theme's (or an SEO plugin's) competing `og:` / `twitter:` meta tags are stripped before the plugin's own set is emitted. Scrapers that read the first `og:description` (e.g. Telegram's Webpage Bot) were getting the theme's blank one. A failed resolve leaves existing tags alone rather than blanking the preview.
+
 ## [0.1.3] - 2026-11-12
 
 - Fountain links always render a button now, degrading episode → show → `fountain.fm/discover`; the note says "(opens the show)" or "(opens Fountain)". Supersedes 0.1.2's "omit the button on an unreliable lookup" policy.
