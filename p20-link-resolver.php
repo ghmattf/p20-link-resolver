@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Podcast 2.0 Link Resolver
  * Description: pod.link-style smart links for podcasts, limited to Podcasting 2.0 apps (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy). Link to a show or a single episode by its podcast:guid / episode guid; metadata comes from the Podcast Index API. Shortcode: [p20link].
- * Version: 0.1.4
+ * Version: 0.1.5
  * Requires at least: 5.3
  * Requires PHP: 7.4
  * Author: Matt Finlay
@@ -28,15 +28,17 @@
  * "podcast-platform-links" guide (show ids; Podfriend also the episode guid).
  * Fountain is the exception: its public URLs use opaque Fountain ids, so show
  * and episode links are resolved from the podcast:guid / episode guid through
- * Fountain's public lookup API (api.fountain.fm, no key required) and cached
- * in transients. Links degrade episode -> show -> fountain.fm/discover, so
+ * Fountain's public lookup API (api.fountain.fm, no key required), cached in
+ * transients and remembered on the cache row as a derived URL for 30 days.
+ * Links degrade episode -> show -> fountain.fm/discover, so
  * the Fountain button always appears and never opens the wrong episode; the
  * UI note says what it opens when it can't open the requested episode.
  *
  * CACHING: one row per show/episode in {prefix}p20link_cache. Stale rows keep
  * serving while a refresh runs on the shutdown hook, so a Podcast Index outage
  * never blanks an already-seen release. Misses are remembered in short
- * transients (definitive: 1 hour, unreliable: 30 seconds).
+ * transients (Podcast Index definitive: 1 hour, unreliable: 30 seconds;
+ * Fountain definitive: 30 minutes, unreliable: 30 seconds).
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -45,13 +47,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class P20_Link_Resolver {
 
-	const VERSION             = '0.1.4';
+	const VERSION             = '0.1.5';
 	const PI_API              = 'https://api.podcastindex.org/api/1.0';
 	const REFRESH_DEFAULT     = 12;       // Hours between background refreshes.
 	const FAIL_TTL            = HOUR_IN_SECONDS;
 	const SOFT_FAIL_TTL       = 30;
 	const NEG_SCHEMA          = 1;        // Bump to invalidate remembered misses.
-	const TABLE_VERSION       = 1;        // Bump when a CREATE TABLE changes.
+	const TABLE_VERSION       = 2;        // Bump when a CREATE TABLE changes.
+	const FOUNTAIN_FAIL_TTL   = 30 * MINUTE_IN_SECONDS; // Fountain definitive misses (shorter than neg_ttl()'s hour).
+	const DERIVED_URL_TTL     = 30 * DAY_IN_SECONDS;    // Fountain URL cached on the row before re-deriving.
 	const SEARCH_MAX          = 40;
 	const SEARCH_CACHE_TTL    = HOUR_IN_SECONDS;
 	const SEARCH_CACHE_SCHEMA = 1;
@@ -195,6 +199,8 @@ class P20_Link_Resolver {
 			pi_episode_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			episode_title text NOT NULL,
 			episode_image text NOT NULL,
+			fountain_url varchar(512) NOT NULL DEFAULT '',
+			fountain_date datetime NOT NULL DEFAULT '1970-01-01 00:00:00',
 			updated_at datetime NOT NULL,
 			PRIMARY KEY  (lookup_hash)
 		) {$charset};" );
@@ -237,6 +243,11 @@ class P20_Link_Resolver {
 	private function cache_store( $show, $episode, $d ) {
 		global $wpdb;
 		$hash = $this->row_hash( $show, $episode );
+		// REPLACE overwrites the whole row: carry the derived Fountain URL
+		// across so a metadata refresh never drops it.
+		$prev   = $this->cache_get_row( $hash );
+		$f_url  = ( $prev && isset( $prev->fountain_url ) ) ? (string) $prev->fountain_url : '';
+		$f_date = ( $prev && isset( $prev->fountain_date ) && '' !== $prev->fountain_date ) ? (string) $prev->fountain_date : '1970-01-01 00:00:00';
 		$wpdb->replace(
 			$this->cache_table(),
 			array(
@@ -252,11 +263,34 @@ class P20_Link_Resolver {
 				'pi_episode_id' => (int) $d['pi_episode_id'],
 				'episode_title' => (string) $d['episode_title'],
 				'episode_image' => (string) $d['episode_image'],
+				'fountain_url'  => $f_url,
+				'fountain_date' => $f_date,
 				'updated_at'    => gmdate( 'Y-m-d H:i:s' ),
 			),
-			array( '%s', '%s', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s' )
+			array( '%s', '%s', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s' )
 		);
 		unset( $this->row_memo[ $hash ] );
+	}
+
+	/** Remember a derived Fountain URL on its cache row (row must already exist). */
+	private function cache_set_fountain_url( $hash, $url ) {
+		global $wpdb;
+		$url  = (string) $url;
+		$when = gmdate( 'Y-m-d H:i:s' );
+		$wpdb->update(
+			$this->cache_table(),
+			array(
+				'fountain_url'  => $url,
+				'fountain_date' => $when,
+			),
+			array( 'lookup_hash' => $hash ),
+			array( '%s', '%s' ),
+			array( '%s' )
+		);
+		if ( isset( $this->row_memo[ $hash ] ) && is_object( $this->row_memo[ $hash ] ) ) {
+			$this->row_memo[ $hash ]->fountain_url  = $url;
+			$this->row_memo[ $hash ]->fountain_date = $when;
+		}
 	}
 
 	private function refresh_interval() {
@@ -396,8 +430,8 @@ class P20_Link_Resolver {
 	 * render Fountain's client-side 404 (verified live 2026-11-12), as do
 	 * all numeric ids. Resolve guid -> Fountain id through Fountain's
 	 * documented lookup endpoint (no key required), cached in transients:
-	 * hits are remembered long (ids are permanent), misses follow the same
-	 * failure policy as the Podcast Index cache.
+	 * hits are remembered long (ids are permanent); definitive misses for
+	 * 30 minutes, unreliable answers for 30 seconds (see fountain_ttl()).
 	 *
 	 * @param string $kind   'show' or 'episode'.
 	 * @param string $guid   podcast:guid (show) or RSS item guid (episode).
@@ -435,7 +469,7 @@ class P20_Link_Resolver {
 		// Unreliable answer: remember briefly under a value outside the id
 		// alphabet ('~' is not in [A-Za-z0-9_-]) so a soft miss can never be
 		// read back as a definitive one and pin the fallback for a full
-		// FAIL_TTL hour instead of retrying in 30 s.
+		// FOUNTAIN_FAIL_TTL instead of retrying in 30 s.
 		set_transient( $key, '~', $this->fountain_ttl() );
 		return null;
 	}
@@ -444,8 +478,9 @@ class P20_Link_Resolver {
 	 * One POST to Fountain's public guid lookup. Returns the Fountain id,
 	 * '' for a definitive miss (200 without a matching hit, 404), or null
 	 * for an unreliable answer (transport error, 5xx, undecodable body) -
-	 * mirroring api_get()'s contract so fountain_ttl() can apply the same
-	 * 1-hour / 30-second remembered-miss policy as neg_ttl().
+	 * mirroring api_get()'s contract so fountain_ttl() can apply a
+	 * 30-minute / 30-second remembered-miss policy (shorter than neg_ttl()'s
+	 * hour: one Fountain lookup is cheap to retry).
 	 */
 	private function fountain_lookup( $kind, $guid, $parent ) {
 		$payload = array( 'id' => ( 'show' === $kind ? 'podcast:guid:' : 'podcast:item:guid:' ) . $guid );
@@ -496,9 +531,9 @@ class P20_Link_Resolver {
 		return ''; // Readable hits without a match: Fountain doesn't know it (yet).
 	}
 
-	/** TTL for a remembered Fountain miss: same policy as neg_ttl(). */
+	/** TTL for a remembered Fountain miss: definitive misses retry sooner than neg_ttl()'s. */
 	private function fountain_ttl() {
-		return ( 200 === $this->fountain_status || 404 === $this->fountain_status ) ? self::FAIL_TTL : self::SOFT_FAIL_TTL;
+		return ( 200 === $this->fountain_status || 404 === $this->fountain_status ) ? self::FOUNTAIN_FAIL_TTL : self::SOFT_FAIL_TTL;
 	}
 
 	/* ------------------------------------------------------------------ *
@@ -643,11 +678,37 @@ class P20_Link_Resolver {
 	}
 
 	/**
+	 * Run the Fountain degradation chain (episode -> show) for one release.
+	 * Returns array( 'url', 'episode' ) for a real Fountain id, or null when
+	 * no id can be produced (no guid, definitive miss, unreliable answer).
+	 * The fountain.fm/discover last resort lives in app_link() so a stale
+	 * derived URL can win over it.
+	 */
+	private function fountain_derive( $pguid, $has_ep, $ep_guid ) {
+		if ( '' === $pguid ) {
+			return null;
+		}
+		if ( $has_ep ) {
+			$ep_f = $this->fountain_id( 'episode', $ep_guid, $pguid );
+			if ( is_string( $ep_f ) && '' !== $ep_f ) {
+				return array( 'url' => 'https://fountain.fm/episode/' . $ep_f, 'episode' => true );
+			}
+			// Definitive miss or unreliable answer: show next.
+		}
+		$show_f = $this->fountain_id( 'show', $pguid );
+		if ( is_string( $show_f ) && '' !== $show_f ) {
+			return array( 'url' => 'https://fountain.fm/show/' . $show_f, 'episode' => false );
+		}
+		return null;
+	}
+
+	/**
 	 * URL for one app, or null when it cannot be built from what we know.
 	 * 'episode' says whether the URL points at the episode (true) or at the
 	 * show (false). Patterns: Podcast Index "podcast-platform-links", except
 	 * Fountain (opaque ids, see fountain_id()) and BoostMeBuddy (the app's
-	 * own guid query params).
+	 * own guid query params). Fountain additionally serves a derived URL
+	 * remembered on the cache row (see fountain_derive()).
 	 */
 	private function app_link( $slug, $r ) {
 		$feed_id  = (int) $r['feed_id'];
@@ -663,20 +724,33 @@ class P20_Link_Resolver {
 				// 2026-11-12): episode -> show -> fountain.fm/discover, so
 				// the button always appears and never opens the wrong
 				// episode; the UI note says what it opens instead.
-				if ( '' !== $pguid ) {
-					if ( $has_ep ) {
-						$ep_f = $this->fountain_id( 'episode', $ep_guid, $pguid );
-						if ( is_string( $ep_f ) && '' !== $ep_f ) {
-							return array( 'url' => 'https://fountain.fm/episode/' . $ep_f, 'episode' => true );
-						}
-						// Definitive miss or unreliable answer: show next.
-					}
-					$show_f = $this->fountain_id( 'show', $pguid );
-					if ( is_string( $show_f ) && '' !== $show_f ) {
-						return array( 'url' => 'https://fountain.fm/show/' . $show_f, 'episode' => false );
-					}
+				//
+				// Derived URLs are remembered on the cache row for 30 days:
+				// a fresh one is served with no Fountain call at all, a
+				// stale one is re-derived, and when re-derivation cannot
+				// produce a real id the stale URL is served silently rather
+				// than degrading to discover.
+				$hash   = $this->row_hash( $r['show_ref'], $has_ep ? $ep_guid : '' );
+				$row    = $this->cache_get_row( $hash );
+				$cached = ( $row && isset( $row->fountain_url ) ) ? (string) $row->fountain_url : '';
+				$ts     = ( $row && isset( $row->fountain_date ) ) ? strtotime( $row->fountain_date . ' UTC' ) : 0;
+				if ( $cached && $ts && ( time() - $ts ) < self::DERIVED_URL_TTL ) {
+					return array(
+						'url'     => $cached,
+						'episode' => false !== strpos( $cached, 'fountain.fm/episode/' ),
+					);
 				}
-				// No guid, unknown show, or unreliable show lookup.
+				$link = $this->fountain_derive( $pguid, $has_ep, $ep_guid );
+				if ( $link ) {
+					$this->cache_set_fountain_url( $hash, $link['url'] );
+					return $link;
+				}
+				if ( $cached ) {
+					return array(
+						'url'     => $cached,
+						'episode' => false !== strpos( $cached, 'fountain.fm/episode/' ),
+					);
+				}
 				return array( 'url' => 'https://fountain.fm/discover', 'episode' => false, 'note' => 'discover' );
 
 			case 'curiocaster':
@@ -1562,7 +1636,7 @@ JS;
 		if ( ! isset( $tabs[ $tab ] ) ) {
 			$tab = 'settings';
 		}
-		echo '<div class="wrap"><h1>' . esc_html__( 'Podcast 2.0 Link', 'p20-link' ) . '</h1>';
+		echo '<div class="wrap"><h1>' . esc_html__( 'Podcast 2.0 Link', 'p20-link' ) . ' <span class="description" style="font-size:14px;font-weight:400;">' . esc_html( self::VERSION ) . '</span></h1>';
 		if ( isset( $_GET['p20msg'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( sanitize_text_field( wp_unslash( $_GET['p20msg'] ) ) ) . '</p></div>'; // phpcs:ignore WordPress.Security.NonceVerification
 		}
