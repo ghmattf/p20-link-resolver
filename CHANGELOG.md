@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.5] - 2026-11-14
+
+- Fountain: definitive lookup misses are now remembered for 30 minutes instead of an hour (`FOUNTAIN_FAIL_TTL`); unreliable answers stay at 30 seconds.
+- Fountain: the derived show/episode URL is now remembered on the cache row (`fountain_url` / `fountain_date`, valid 30 days). A fresh entry is served with no Fountain call at all; a stale one is re-derived, and when re-derivation fails the stale URL is served silently instead of degrading to discover (discover only appears when nothing was ever cached). `TABLE_VERSION` bumped to 2 - the new columns are added on the next admin page load.
+
 ## [0.1.4] - 2026-11-13
 
 - Social previews: on `?show=` pages the `wp_head` output is now buffered so the theme's (or an SEO plugin's) competing `og:` / `twitter:` meta tags are stripped before the plugin's own set is emitted. Scrapers that read the first `og:description` (e.g. Telegram's Webpage Bot) were getting the theme's blank one. A failed resolve leaves existing tags alone rather than blanking the preview.

@@ -79,6 +79,14 @@ class FakeWpdb {
 		return isset( $this->rows[ $h ] ) ? (object) $this->rows[ $h ] : null;
 	}
 	public function replace( $t, $data ) { $this->rows[ $data['lookup_hash'] ] = $data; return 1; }
+	public function update( $t, $data, $where, $format = null, $where_format = null ) {
+		$h = isset( $where['lookup_hash'] ) ? $where['lookup_hash'] : null;
+		if ( null === $h || ! isset( $this->rows[ $h ] ) ) {
+			return 0;
+		}
+		$this->rows[ $h ] = array_merge( $this->rows[ $h ], $data );
+		return 1;
+	}
 }
 $wpdb = new FakeWpdb();
 $GLOBALS['wpdb'] = $wpdb;
@@ -170,10 +178,10 @@ $mk_hit = function ( $hits ) {
 $GLOBALS['http_mock']['api.fountain.fm'] = $mk_hit( array( array( '_id' => 'episode:id:PfxEp1', '_type' => 'EPISODE' ) ) );
 check( 'fountain id strips content-id prefix', 'PfxEp1' === call( $o, 'fountain_id', 'episode', 'prefixed-guid', 'parent-guid' ) );
 
-// 200 without a match = definitive miss (remembered for an hour).
+// 200 without a match = definitive miss (remembered for 30 minutes).
 $GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 200, 'body' => json_encode( array( 'hits' => array() ) ) );
 check( 'fountain empty hits -> miss', '' === call( $o, 'fountain_id', 'show', 'never-there' ) );
-check( 'fountain definitive miss TTL', HOUR_IN_SECONDS === call( $o, 'fountain_ttl' ) );
+check( 'fountain definitive miss TTL', 30 * MINUTE_IN_SECONDS === call( $o, 'fountain_ttl' ) );
 
 // 5xx = unreliable (remembered for 30 seconds only, never a definitive miss).
 $GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 503, 'body' => '' );
@@ -232,6 +240,70 @@ $GLOBALS['http_mock']['api.fountain.fm'] = array( 'code' => 503, 'body' => '' );
 $fs = $base; $fs['podcast_guid'] = 'flaky-show';
 check( 'fountain unreliable show lookup -> discover', 'https://fountain.fm/discover' === call( $o, 'app_link', 'fountain', $fs )['url'] );
 unset( $GLOBALS['http_mock']['api.fountain.fm'] );
+
+// --- fountain derived URL cache (fountain_url / fountain_date on the row) ---
+$clear_memo = function () use ( $o ) {
+	$p = new ReflectionProperty( $o, 'row_memo' );
+	$p->setAccessible( true );
+	$p->setValue( $o, array() );
+};
+$stale_date = gmdate( 'Y-m-d H:i:s', time() - 31 * DAY_IN_SECONDS );
+$fhash      = md5( 'x|' );
+$ehash      = md5( 'x|PC2084/a b' );
+
+// Fresh cached URL: served as-is with no Fountain call.
+$clear_memo();
+$wpdb->rows[ $fhash ] = array(
+	'lookup_hash'   => $fhash,
+	'show_ref'      => 'x',
+	'episode_guid'  => '',
+	'fountain_url'  => 'https://fountain.fm/show/CachedShow1',
+	'fountain_date' => gmdate( 'Y-m-d H:i:s' ),
+);
+$n = count( $GLOBALS['http_log'] );
+$l = call( $o, 'app_link', 'fountain', $base );
+check( 'fountain fresh derived URL skips lookup', 'https://fountain.fm/show/CachedShow1' === $l['url'] && ! $l['episode'] && count( $GLOBALS['http_log'] ) === $n );
+
+// An episode-shaped cached URL reports episode=true.
+$clear_memo();
+$wpdb->rows[ $ehash ] = array(
+	'lookup_hash'   => $ehash,
+	'show_ref'      => 'x',
+	'episode_guid'  => 'PC2084/a b',
+	'fountain_url'  => 'https://fountain.fm/episode/CachedEp1',
+	'fountain_date' => gmdate( 'Y-m-d H:i:s' ),
+);
+$n = count( $GLOBALS['http_log'] );
+$l = call( $o, 'app_link', 'fountain', $ep );
+check( 'fountain fresh episode URL flagged, no lookup', 'https://fountain.fm/episode/CachedEp1' === $l['url'] && $l['episode'] && count( $GLOBALS['http_log'] ) === $n );
+
+// Stale derived URL: re-derived and the row date refreshed.
+$clear_memo();
+$wpdb->rows[ $fhash ]['fountain_url']  = 'https://fountain.fm/show/StaleShow1';
+$wpdb->rows[ $fhash ]['fountain_date'] = $stale_date;
+$l    = call( $o, 'app_link', 'fountain', $base );
+$ts   = strtotime( $wpdb->rows[ $fhash ]['fountain_date'] . ' UTC' );
+check( 'fountain stale derived URL regenerated', 'https://fountain.fm/show/AbCdShow123' === $l['url'] );
+check( 'fountain regen refreshes fountain_date', 'https://fountain.fm/show/AbCdShow123' === $wpdb->rows[ $fhash ]['fountain_url'] && $ts && ( time() - $ts ) < 60 );
+
+// Re-derivation failure: the stale URL wins over discover, silently.
+$clear_memo();
+$wpdb->rows[ $fhash ]['fountain_url']  = 'https://fountain.fm/show/StaleShow1';
+$wpdb->rows[ $fhash ]['fountain_date'] = $stale_date;
+$ng2 = $base; $ng2['podcast_guid'] = '';
+$n   = count( $GLOBALS['http_log'] );
+$l   = call( $o, 'app_link', 'fountain', $ng2 );
+check( 'fountain stale URL survives failed regen', 'https://fountain.fm/show/StaleShow1' === $l['url'] && ! isset( $l['note'] ) && count( $GLOBALS['http_log'] ) === $n );
+
+// A metadata refresh (cache_store REPLACE) must not drop the derived URL.
+$clear_memo();
+$wpdb->rows[ $fhash ]['fountain_url']  = 'https://fountain.fm/show/KeepMe';
+$wpdb->rows[ $fhash ]['fountain_date'] = $stale_date;
+call( $o, 'cache_store', 'x', '', array(
+	'feed_id' => 1, 'podcast_guid' => 'g', 'itunes_id' => 0, 'show_title' => 'S',
+	'author' => 'A', 'image' => '', 'pi_episode_id' => 0, 'episode_title' => '', 'episode_image' => '',
+) );
+check( 'cache_store preserves derived Fountain URL', 'https://fountain.fm/show/KeepMe' === $wpdb->rows[ $fhash ]['fountain_url'] && $stale_date === $wpdb->rows[ $fhash ]['fountain_date'] );
 
 // --- resolution + caching (mocked API) ---
 $GLOBALS['http_log'] = array(); // Fountain lookups above already logged.

@@ -39,14 +39,14 @@ Patterns come from the Podcast Index's [podcast-platform-links](https://github.c
 
 Podfriend is keyed on the Apple Podcasts id, so it is hidden for shows that have none. When an episode was requested but an app can only link the show, its button says "(opens the show)". If the Podcast Index doesn't know the episode yet, every app falls back to the show and a notice explains why.
 
-Fountain's public URLs use **opaque Fountain ids**, not Podcast Index ids - the guide's numeric `fountain.fm/show|episode/{PI id}` patterns render Fountain's client-side 404 (verified live 2026-11-12). The plugin resolves guid → id through Fountain's public [lookup API](https://fountain.fm/docs/endpoints/search/search-lookup.md) (`POST api.fountain.fm/v1/search/lookup`, no key required) and caches the result. Links degrade **episode → show → `fountain.fm/discover`**, so the Fountain button always appears and never opens the wrong episode; when it can't open the requested episode the note says what it opens instead ("(opens the show)" / "(opens Fountain)"). Nothing unofficial or fragile - unlike the music plugin's Fountain integration, no build fingerprint is involved.
+Fountain's public URLs use **opaque Fountain ids**, not Podcast Index ids - the guide's numeric `fountain.fm/show|episode/{PI id}` patterns render Fountain's client-side 404 (verified live 2026-11-12). The plugin resolves guid → id through Fountain's public [lookup API](https://fountain.fm/docs/endpoints/search/search-lookup.md) (`POST api.fountain.fm/v1/search/lookup`, no key required) and caches the result: lookups in short transients, the derived URL on the cache row for 30 days (a fresh row entry is served without calling Fountain at all). Links degrade **episode → show → `fountain.fm/discover`**, so the Fountain button always appears and never opens the wrong episode; when it can't open the requested episode the note says what it opens instead ("(opens the show)" / "(opens Fountain)"). Nothing unofficial or fragile - unlike the music plugin's Fountain integration, no build fingerprint is involved.
 
 ## Features
 
 - Search UI: search shows, then link to the whole show or pick one of its 25 latest episodes
 - `?show=` / `?episode=` URL mode and inline shortcode attributes (attributes win)
 - Per-app controls: enable, order, icon URL, icon background; optional random order
-- Cache table with stale-while-revalidate refresh (default 12 h, configurable), plus short negative caching for misses
+- Cache table with stale-while-revalidate refresh (default 12 h, configurable), plus short negative caching for misses and a 30-day derived Fountain URL per row
 - Usage log (search picks and app launches - titles only, never raw ids) with View Log, Reports and Cache admin tabs
 - Open Graph / Twitter Card previews on link pages
 - Per-IP rate limits on search, logging and visitor-driven upstream lookups

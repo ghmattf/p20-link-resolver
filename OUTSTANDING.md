@@ -24,9 +24,9 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 
 ### 4. Cache tab: per-row editing
 - **Status:** Open
-- **What:** the music plugin lets an admin hand-correct a cached link/artwork URL; here the Cache tab only deletes rows.
+- **What:** the music plugin lets an admin hand-correct a cached link/artwork URL; here the Cache tab only deletes rows. Fountain now stores a derived URL per row (`fountain_url`), so there is at least one column worth hand-editing (bumping `fountain_date` would force a re-derive).
 - **Where:** `render_cache_tab()`; add an `admin-post` handler like `handle_delete_cache_row()` with validation (https, app's own domain for links).
-- **Plan:** only worth doing if apps get resolved links that can go stale; today all links are formulaic.
+- **Plan:** a Fountain URL/date editor on the Cache tab; the other apps' links stay formulaic.
 
 ### 5. `uninstall.php`
 - **Status:** Open
@@ -63,6 +63,12 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **What:** Matt tested a link with Telegram's Webpage Bot and got no OG image/text. Verified live 2026-11-12: the plugin emits full OG tags (title/description/image, `summary_large_image`) on `https://phafe.com/podcastlinker/?show=…&episode=…`, fetched with the `TelegramBot` UA (200; robots.txt doesn't block Telegram; og:image is a reachable 1000×1000 2.4 MB gif, under Telegram's 5 MB limit). Likely causes: (a) the tested URL was the old `/podcast2-0linker/…` slug, which now 404s (page renamed) - Telegram shows nothing for 404s; (b) the bare `/podcastlinker/` URL without `?show=` params, where the plugin early-returns and only the theme's tags remain (its `og:description` is a single space, no `og:image`); (c) theme duplicate og tags print before the plugin's - if Telegram reads the first `og:description` it gets the blank one. **Cause (c) addressed in 0.1.4:** `og_buffer_start()` / `og_buffer_end()` now buffer `wp_head`, strip every theme/SEO `og:`/`twitter:` meta, and append the plugin's own set (failed resolve leaves existing tags alone).
 - **Where:** `output_social_preview_meta()`, `og_buffer_start()`, `og_buffer_end()`; phafe.com theme og output.
 - **Plan:** release the dedupe fix; re-send the full param'd `/podcastlinker/` URL to @WebpageBot after deploy; if text is still blank, clean up the theme's duplicate og tags (theme-side, outside this repo). Note for later: the feed artwork gif is 2.4 MB - a smaller jpg would be a safer og:image.
+
+### 12. `note` from `app_link()` never reaches `render_html()` (found 2026-11-13)
+- **Status:** Open
+- **What:** `render()` copies only `url` / `label` / `episode` / `icon_url` from `app_link()`'s return into `$links`, dropping the `note` key. `render_html()`'s "(opens Fountain)" branch (`isset($link['note']) && 'discover' === $link['note']`) is therefore dead in production - a discover link on an episode page always says "(opens the show)". Harmless for other apps (they never set `note`); the harness passes `note` directly to `render_html()`, which is why the test passes.
+- **Where:** `render()`'s `$links[ $slug ] = array(...)` assembly (after the `app_link()` call); `render_html()` note branch.
+- **Plan:** carry `'note' => isset( $link['note'] ) ? $link['note'] : ''` through and keep the `render_html()` check; add a render-level test asserting "(opens Fountain)" appears for a discover link on an episode page (not just a direct `render_html()` call).
 
 ## Closed decisions
 
