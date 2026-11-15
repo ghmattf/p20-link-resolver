@@ -62,13 +62,49 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **Status:** Open (dedupe shipped in 0.1.4 - awaiting post-deploy @WebpageBot retest)
 - **What:** Matt tested a link with Telegram's Webpage Bot and got no OG image/text. Verified live 2026-11-12: the plugin emits full OG tags (title/description/image, `summary_large_image`) on `https://phafe.com/podcastlinker/?show=…&episode=…`, fetched with the `TelegramBot` UA (200; robots.txt doesn't block Telegram; og:image is a reachable 1000×1000 2.4 MB gif, under Telegram's 5 MB limit). Likely causes: (a) the tested URL was the old `/podcast2-0linker/…` slug, which now 404s (page renamed) - Telegram shows nothing for 404s; (b) the bare `/podcastlinker/` URL without `?show=` params, where the plugin early-returns and only the theme's tags remain (its `og:description` is a single space, no `og:image`); (c) theme duplicate og tags print before the plugin's - if Telegram reads the first `og:description` it gets the blank one. **Cause (c) addressed in 0.1.4:** `og_buffer_start()` / `og_buffer_end()` now buffer `wp_head`, strip every theme/SEO `og:`/`twitter:` meta, and append the plugin's own set (failed resolve leaves existing tags alone).
 - **Where:** `output_social_preview_meta()`, `og_buffer_start()`, `og_buffer_end()`; phafe.com theme og output.
-- **Plan:** release the dedupe fix; re-send the full param'd `/podcastlinker/` URL to @WebpageBot after deploy; if text is still blank, clean up the theme's duplicate og tags (theme-side, outside this repo). Note for later: the feed artwork gif is 2.4 MB - a smaller jpg would be a safer og:image.
+- **Plan:** release the dedupe fix; re-send the full param'd `/podcastlink/` URL to @WebpageBot after deploy (page moved from `/podcastlinker/` on 2026-11-15); if text is still blank, clean up the theme's duplicate og tags (theme-side, outside this repo). Note for later: the feed artwork gif is 2.4 MB - a smaller jpg would be a safer og:image.
 
 ### 12. `note` from `app_link()` never reaches `render_html()` (found 2026-11-13)
 - **Status:** Open
 - **What:** `render()` copies only `url` / `label` / `episode` / `icon_url` from `app_link()`'s return into `$links`, dropping the `note` key. `render_html()`'s "(opens Fountain)" branch (`isset($link['note']) && 'discover' === $link['note']`) is therefore dead in production - a discover link on an episode page always says "(opens the show)". Harmless for other apps (they never set `note`); the harness passes `note` directly to `render_html()`, which is why the test passes.
 - **Where:** `render()`'s `$links[ $slug ] = array(...)` assembly (after the `app_link()` call); `render_html()` note branch.
 - **Plan:** carry `'note' => isset( $link['note'] ) ? $link['note'] : ''` through and keep the `render_html()` check; add a render-level test asserting "(opens Fountain)" appears for a discover link on an episode page (not just a direct `render_html()` call).
+
+### 13. Podcast Guru as a link target
+- **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
+- **What:** Podcast Guru (iOS, Android, macOS) is a Podcasting 2.0 app with boost support (Boostagrams, Live Boosts, Sat Streaming) but is not in the resolver's registry. Already-target apps skipped: Fountain, Podverse, CurioCaster, Podfriend.
+- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
+- **Plan:** find its show/episode URL pattern (platform-links guide, its docs, or live check), then add registry entry + `app_link()` case + README row + tests together.
+
+### 14. Castamatic as a link target
+- **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
+- **What:** Castamatic (iOS) is a Podcasting 2.0 app with boost support (Boostagrams, Live Boosts, Sat Streaming) but is not in the resolver's registry.
+- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
+- **Plan:** find its show/episode URL pattern (platform-links guide, its docs, or live check), then add registry entry + `app_link()` case + README row + tests together.
+
+### 15. Breez as a link target
+- **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
+- **What:** Breez (iOS, Android) is a Lightning wallet with a built-in podcast player and boost support (Boostagrams, Sat Streaming, Value) but is not in the resolver's registry.
+- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
+- **Plan:** find its show/episode URL pattern - it may only have wallet/deep links rather than web permalinks, so verify before adding; registry entry + `app_link()` case + README row + tests together.
+
+### 16. TrueFans as a link target
+- **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
+- **What:** TrueFans (hosting + player, many platforms) is a Podcasting 2.0 app with boost support (Boostagrams, Live Boosts, Sat Streaming) but is not in the resolver's registry.
+- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
+- **Plan:** find its show/episode URL pattern (platform-links guide, its docs, or live check), then add registry entry + `app_link()` case + README row + tests together.
+
+### 17. Podfans as a link target
+- **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
+- **What:** Podfans (web player) sends boosts and streams per the bLIP-10 reference table but is not in the resolver's registry.
+- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
+- **Plan:** find its show/episode URL pattern (its docs or live check), then add registry entry + `app_link()` case + README row + tests together.
+
+### 18. podcastindex.org as a link target
+- **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
+- **What:** podcastindex.org itself is not a player app - confirm it has stable show/episode permalink pages worth linking to (and whether "boosting" applies there at all) before building a case for it.
+- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
+- **Plan:** check the site's permalink structure first; only add registry entry + `app_link()` case + README row + tests if the pages exist and are useful link targets.
 
 ## Closed decisions
 

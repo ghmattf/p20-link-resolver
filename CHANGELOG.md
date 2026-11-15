@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.6] - 2026-11-15
+
+- Footer promo renamed: "Share a show with PodcastLink", linking to `https://phafe.com/podcastlink` (page moved from `/podcastlinker`).
+
 ## [0.1.5] - 2026-11-14
 
 - Fountain: definitive lookup misses are now remembered for 30 minutes instead of an hour (`FOUNTAIN_FAIL_TTL`); unreliable answers stay at 30 seconds.
