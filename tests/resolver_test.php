@@ -149,6 +149,14 @@ check( 'podfriend omitted without apple id', null === call( $o, 'app_link', 'pod
 check( 'boostmebuddy show', 'https://www.boostmebuddy.com/?podcast=g' === call( $o, 'app_link', 'boostmebuddy', $base )['url'] );
 $noguid = $base; $noguid['podcast_guid'] = '';
 check( 'boostmebuddy omitted without podcast guid', null === call( $o, 'app_link', 'boostmebuddy', $noguid ) );
+check( 'castamatic show', 'https://castamatic.com/guid/g' === call( $o, 'app_link', 'castamatic', $base )['url'] );
+check( 'castamatic omitted without podcast guid', null === call( $o, 'app_link', 'castamatic', $noguid ) );
+check( 'truefans show', 'https://truefans.fm/g' === call( $o, 'app_link', 'truefans', $base )['url'] );
+check( 'truefans omitted without podcast guid', null === call( $o, 'app_link', 'truefans', $noguid ) );
+check( 'podcastindex show (guid)', 'https://podcastindex.org/podcast/g' === call( $o, 'app_link', 'podcastindex', $base )['url'] );
+check( 'podcastindex show falls back to feed id', 'https://podcastindex.org/podcast/75075' === call( $o, 'app_link', 'podcastindex', $noguid )['url'] );
+$noid = $noguid; $noid['feed_id'] = 0;
+check( 'podcastindex omitted with no ids', null === call( $o, 'app_link', 'podcastindex', $noid ) );
 
 $ep = $base;
 $ep['episode_wanted'] = true; $ep['episode_guid'] = 'PC2084/a b'; $ep['pi_episode_id'] = 16795090;
@@ -165,6 +173,12 @@ check( 'boostmebuddy episode link', 'https://www.boostmebuddy.com/?podcast=g&epi
 $miss_ep = $ep; $miss_ep['episode_missing'] = true;
 $l = call( $o, 'app_link', 'boostmebuddy', $miss_ep );
 check( 'boostmebuddy missing episode degrades to show', ! $l['episode'] && 'https://www.boostmebuddy.com/?podcast=g' === $l['url'] );
+$l = call( $o, 'app_link', 'castamatic', $ep );
+check( 'castamatic episode degrades to show', ! $l['episode'] && 'https://castamatic.com/guid/g' === $l['url'] );
+$l = call( $o, 'app_link', 'truefans', $ep );
+check( 'truefans episode degrades to show', ! $l['episode'] && 'https://truefans.fm/g' === $l['url'] );
+$l = call( $o, 'app_link', 'podcastindex', $ep );
+check( 'podcastindex episode degrades to show', ! $l['episode'] && 'https://podcastindex.org/podcast/g' === $l['url'] );
 $missing = $ep; $missing['episode_missing'] = true;
 $l = call( $o, 'app_link', 'fountain', $missing );
 check( 'missing episode -> fountain show link', 'https://fountain.fm/show/AbCdShow123' === $l['url'] && ! $l['episode'] );
@@ -364,17 +378,17 @@ $GLOBALS['http_mock'] = array(
 );
 $GLOBALS['transients'] = array();
 $html = $o->render( array( 'show' => 'abc-guid', 'episode' => 'PC2084' ) );
-check( 'render: 5 app buttons', 5 === substr_count( $html, 'class="p20link-item ' ) );
+check( 'render: 8 app buttons', 8 === substr_count( $html, 'class="p20link-item ' ) );
 check( 'render: episode title shown', false !== strpos( $html, 'Ep 1' ) );
 check( 'render: fountain episode href', false !== strpos( $html, 'https://fountain.fm/episode/EpRender1' ) );
-check( 'render: degraded apps flagged', substr_count( $html, '(opens the show)' ) === 2 );
+check( 'render: degraded apps flagged', substr_count( $html, '(opens the show)' ) === 5 );
 $nr = $ep; $nr['episode_title'] = 'T';
 $nh = call( $o, 'render_html', array(
 	'fountain' => array( 'url' => 'https://fountain.fm/discover', 'label' => 'Fountain', 'episode' => false, 'icon_url' => '', 'note' => 'discover' ),
 ), $nr, false, 'S', 'A', '' );
 check( 'render: discover fallback note', false !== strpos( $nh, '(opens Fountain)' ) );
 check( 'render: no share/url param leak of API secret', false === strpos( $html, 'SECRET' ) );
-check( 'render: PodcastLink promo above footer', false !== strpos( $html, 'Share a show with' ) && false !== strpos( $html, 'href="https://phafe.com/podcastlink"' ) && strpos( $html, 'phafe.com/podcastlink' ) < strpos( $html, 'podcastindex.org' ) );
+check( 'render: PodcastLink promo above footer', false !== strpos( $html, 'Share a show with' ) && false !== strpos( $html, 'href="https://phafe.com/podcastlink"' ) && strpos( $html, 'phafe.com/podcastlink' ) < strpos( $html, 'Powered by' ) );
 
 $html = $o->render( array( 'show' => 'abc-guid', 'header' => 'false' ) );
 check( 'render header=false hides title', false === strpos( $html, 'p20link-title' ) );
@@ -382,7 +396,7 @@ check( 'render header=false hides title', false === strpos( $html, 'p20link-titl
 // disabled app
 $GLOBALS['opts']['p20link_apps'] = array( 'fountain' => array( 'enabled' => false ) );
 $html = $o->render( array( 'show' => 'abc-guid' ) );
-check( 'disabled app hidden', false === strpos( $html, 'fountain.fm/show' ) && 4 === substr_count( $html, 'class="p20link-item ' ) );
+check( 'disabled app hidden', false === strpos( $html, 'fountain.fm/show' ) && 7 === substr_count( $html, 'class="p20link-item ' ) );
 
 // no show -> search UI; no creds -> message
 $html = $o->render( array() );
