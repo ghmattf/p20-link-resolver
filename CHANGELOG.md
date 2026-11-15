@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.7] - 2026-11-15
+
+- Search screen H1 renamed to "PodcastLink" (was "PodcastLinker"), matching the footer promo.
+
 ## [0.1.6] - 2026-11-15
 
 - Footer promo renamed: "Share a show with PodcastLink", linking to `https://phafe.com/podcastlink` (page moved from `/podcastlinker`).
