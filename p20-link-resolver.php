@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Podcast 2.0 Link Resolver
  * Description: pod.link-style smart links for podcasts, limited to Podcasting 2.0 apps (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy). Link to a show or a single episode by its podcast:guid / episode guid; metadata comes from the Podcast Index API. Shortcode: [p20link].
- * Version: 0.1.6
+ * Version: 0.1.7
  * Requires at least: 5.3
  * Requires PHP: 7.4
  * Author: Matt Finlay
@@ -47,7 +47,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class P20_Link_Resolver {
 
-	const VERSION             = '0.1.6';
+	const VERSION             = '0.1.7';
 	const PI_API              = 'https://api.podcastindex.org/api/1.0';
 	const REFRESH_DEFAULT     = 12;       // Hours between background refreshes.
 	const FAIL_TTL            = HOUR_IN_SECONDS;
@@ -1025,7 +1025,7 @@ class P20_Link_Resolver {
 		ob_start();
 		?>
 		<div class="p20link-search">
-			<h1 class="p20link-search-h1">PodcastLinker</h1>
+			<h1 class="p20link-search-h1">PodcastLink</h1>
 			<h2 class="p20link-search-title"><?php esc_html_e( 'Find a podcast', 'p20-link' ); ?></h2>
 			<p class="p20link-search-subtitle"><?php esc_html_e( 'Search, pick a show (or one of its episodes) and get a link that opens it in Podcasting 2.0 apps.', 'p20-link' ); ?></p>
 			<?php if ( $message ) : ?>
