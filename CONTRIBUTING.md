@@ -41,7 +41,7 @@ To try it for real, copy `p20-link-resolver.php` into `wp-content/plugins/p20-li
 
 ## Releases
 
-See "Release flow" in `AGENTS.md`: green tests, `./bump-version.sh x.y.z`, CHANGELOG entry, annotated `vx.y.z` tag, push.
+See "Release flow" in `AGENTS.md`: green tests, `./bump-version.sh x.y.z`, CHANGELOG entry, annotated `vx.y.z` tag, push, `./build-zip.sh` + `gh release create`. Always build the release zip with `./build-zip.sh` - it keeps the `p20-link-resolver/` wrapper folder WordPress needs to overwrite an existing install; a flat zip creates a duplicate plugin on every upload.
 
 ## Reporting problems
 

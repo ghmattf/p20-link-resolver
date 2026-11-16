@@ -34,6 +34,7 @@ Author/maintainer: Matt Finlay. Licence: GPL-2.0.
 ./tests/run.sh                      # lint + all tests (do this before every commit)
 php -l p20-link-resolver.php        # lint only
 php tests/resolver_test.php         # one harness
+./build-zip.sh                      # release zip in dist/ (wrapper-folder safe; release flow only)
 ```
 
 PHP is expected on `PATH` (CI uses 7.4, 8.1 and 8.3; the code must stay 7.4-compatible: no
@@ -100,7 +101,8 @@ harness doesn't stub yet, add the stub to the harness.
 3. Add a `CHANGELOG.md` entry at the top, Keep-a-Changelog style, dated today: `## [x.y.z] - YYYY-MM-DD`.
 4. Commit `CHANGELOG.md` (plus `OUTSTANDING.md` if statuses changed) with subject `x.y.z: <summary>`. Never `git add -A` blindly; check `git status` first.
 5. Annotated, `v`-prefixed tag: `git tag -a vx.y.z -m "x.y.z"`, then `git push && git push origin vx.y.z`.
-6. Update `OUTSTANDING.md` in the same turn and remove anything just shipped.
+6. `./build-zip.sh`: builds `dist/p20-link-resolver-x.y.z.zip` and fails if any file sits outside the top-level `p20-link-resolver/` folder. **Never hand-roll the `zip` command** - a flat zip makes WordPress install a new plugin folder (named after the zip) on every upload instead of overwriting the existing one. Then `gh release create vx.y.z dist/p20-link-resolver-x.y.z.zip --title "x.y.z" --notes "<summary>"`.
+7. Update `OUTSTANDING.md` in the same turn and remove anything just shipped.
 
 ## Not part of the project
 
