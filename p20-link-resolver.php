@@ -1739,7 +1739,7 @@ JS;
 					<th><?php esc_html_e( 'App', 'p20-link' ); ?></th>
 					<th><?php esc_html_e( 'Enabled', 'p20-link' ); ?></th>
 					<th><?php esc_html_e( 'Order', 'p20-link' ); ?></th>
-					<th><?php esc_html_e( 'Icon URL (blank = site favicon)', 'p20-link' ); ?></th>
+					<th><?php esc_html_e( 'Icon URL (blank = app favicon)', 'p20-link' ); ?></th>
 					<th><?php esc_html_e( 'Icon background', 'p20-link' ); ?></th>
 				</tr></thead>
 				<tbody>
@@ -1751,7 +1751,13 @@ JS;
 						<td><strong><?php echo esc_html( $apps[ $slug ]['label'] ); ?></strong><br /><small><?php echo esc_html( $apps[ $slug ]['domain'] ); ?></small></td>
 						<td><input type="checkbox" name="<?php echo esc_attr( $n ); ?>[enabled]" value="1" <?php checked( $cfg['enabled'] ); ?> /></td>
 						<td><input type="number" min="0" max="99" style="width:4em" name="<?php echo esc_attr( $n ); ?>[order]" value="<?php echo esc_attr( (string) $position ); ?>" /></td>
-						<td><input type="url" class="regular-text" name="<?php echo esc_attr( $n ); ?>[icon_url]" value="<?php echo esc_attr( $cfg['icon_url'] ); ?>" /></td>
+						<td>
+							<input type="url" class="regular-text" name="<?php echo esc_attr( $n ); ?>[icon_url]" value="<?php echo esc_attr( $cfg['icon_url'] ); ?>" />
+							<?php
+							$preview_bg = $this->app_icon_bg( $slug );
+							?>
+							<img class="p20link-icon-preview" src="<?php echo esc_url( $this->app_icon( $slug, $apps[ $slug ] ) ); ?>" alt="" width="24" height="24" style="vertical-align:middle;margin-left:6px;border:1px solid #ccd0d4;border-radius:4px;<?php echo '' !== $preview_bg ? 'background-color:' . esc_attr( $preview_bg ) . ';' : ''; ?>" onerror="this.style.display='none'" />
+						</td>
 						<td>
 							<input type="color" name="<?php echo esc_attr( $n ); ?>[icon_bg]" value="<?php echo esc_attr( $this->app_icon_bg( $slug ) ? $this->app_icon_bg( $slug ) : '#ffffff' ); ?>" />
 							<label><input type="checkbox" name="<?php echo esc_attr( $n ); ?>[icon_bg_none]" value="1" <?php checked( '' === $this->app_icon_bg( $slug ) ); ?> /> <?php esc_html_e( 'None', 'p20-link' ); ?></label>

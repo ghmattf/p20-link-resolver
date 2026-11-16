@@ -49,7 +49,7 @@ Fountain's public URLs use **opaque Fountain ids**, not Podcast Index ids - the 
 
 - Search UI: search shows, then link to the whole show or pick one of its 25 latest episodes
 - `?show=` / `?episode=` URL mode and inline shortcode attributes (attributes win)
-- Per-app controls: enable, order, icon URL, icon background; optional random order
+- Per-app controls: enable, order, icon URL (with a live preview of the icon the buttons will use), icon background; optional random order
 - Cache table with stale-while-revalidate refresh (default 12 h, configurable), plus short negative caching for misses and a 30-day derived Fountain URL per row
 - Usage log (search picks and app launches - titles only, never raw ids) with View Log, Reports and Cache admin tabs
 - Open Graph / Twitter Card previews on link pages

@@ -46,6 +46,18 @@ class WP_Error {}
 function add_query_arg( $args, $url ) {
 	return $url . ( false === strpos( $url, '?' ) ? '?' : '&' ) . http_build_query( $args, '', '&', PHP_QUERY_RFC3986 );
 }
+function settings_fields( $group ) { echo '<input type="hidden" name="option_page" value="' . esc_attr( $group ) . '" />'; }
+function checked( $a, $b = true, $echo = true ) {
+	$r = (string) $a === (string) $b ? ' checked="checked"' : '';
+	if ( $echo ) { echo $r; }
+	return $r;
+}
+function selected( $a, $b = '', $echo = true ) {
+	$r = (string) $a === (string) $b ? ' selected="selected"' : '';
+	if ( $echo ) { echo $r; }
+	return $r;
+}
+function submit_button( $t = null, $type = 'primary', $name = 'submit', $wrap = true ) { echo '<p class="submit"><input type="submit" /></p>'; }
 function wp_remote_get( $url, $args ) {
 	$GLOBALS['http_log'][] = array( $url, $args );
 	foreach ( $GLOBALS['http_mock'] as $needle => $resp ) {
@@ -439,6 +451,21 @@ $clean = $o->sanitize_apps_settings( array(
 check( 'sanitize: orders normalised 0..n-1', array( 0, 1, 2, 3, 4 ) === array_values( array_map( function ( $c ) { return $c['order']; }, array( $clean['curiocaster'], $clean['podverse'], $clean['podfriend'], $clean['fountain'], $clean['boostmebuddy'] ) ) ) );
 check( 'sanitize: "None" beats colour', '' === $clean['podverse']['icon_bg'] && '#ff0000' === $clean['fountain']['icon_bg'] );
 check( 'sanitize: unchecked app disabled', false === $clean['curiocaster']['enabled'] );
+
+// --- settings icon previews ---
+ob_start();
+call( $o, 'render_settings_tab' );
+$st = ob_get_clean();
+check( 'settings: icon preview per app', 9 === substr_count( $st, 'p20link-icon-preview' ) );
+check( 'settings: default favicon preview', false !== strpos( $st, 'https://fountain.fm/favicon.ico' ) );
+check( 'settings: preview img is escaped', false !== strpos( $st, 'src="https://fountain.fm/favicon.ico"' ) );
+$GLOBALS['opts']['p20link_apps']['fountain']['icon_url'] = 'https://example.test/custom.png';
+ob_start();
+call( $o, 'render_settings_tab' );
+$st2 = ob_get_clean();
+check( 'settings: override icon preview', false !== strpos( $st2, 'https://example.test/custom.png' ) );
+check( 'settings: broken preview hides itself', false !== strpos( $st2, 'onerror="this.style.display=\'none\'"' ) );
+unset( $GLOBALS['opts']['p20link_apps']['fountain']['icon_url'] );
 
 // --- social preview buffer (OUTSTANDING #11: theme og duplicates) ---
 $GLOBALS['opts']['p20link_social_preview'] = 'on';
