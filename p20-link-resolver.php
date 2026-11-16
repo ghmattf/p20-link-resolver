@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Podcast 2.0 Link Resolver
- * Description: pod.link-style smart links for podcasts, limited to Podcasting 2.0 apps (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy, Castamatic, TrueFans, Podcast Index). Link to a show or a single episode by its podcast:guid / episode guid; metadata comes from the Podcast Index API. Shortcode: [p20link].
+ * Description: pod.link-style smart links for podcasts, limited to Podcasting 2.0 apps (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy, Castamatic, TrueFans, Podcast Index, Podcast Guru). Link to a show or a single episode by its podcast:guid / episode guid; metadata comes from the Podcast Index API. Shortcode: [p20link].
  * Version: 0.1.8
  * Requires at least: 5.3
  * Requires PHP: 7.4
@@ -25,8 +25,9 @@
  *      [p20link show="{podcast-guid}" header="false"]
  *
  * TARGET APPS: CurioCaster / Podverse / Podfriend / Castamatic / TrueFans /
- * Podcast Index follow the Podcast Index "podcast-platform-links" guide (show
- * ids only for the last three - their episode links need app-internal ids).
+ * Podcast Index / Podcast Guru follow the Podcast Index
+ * "podcast-platform-links" guide (show links only for the last four - their
+ * episode links need app-internal ids).
  * Fountain is the exception: its public URLs use opaque Fountain ids, so show
  * and episode links are resolved from the podcast:guid / episode guid through
  * Fountain's public lookup API (api.fountain.fm, no key required), cached in
@@ -678,6 +679,7 @@ class P20_Link_Resolver {
 			'castamatic'   => array( 'label' => 'Castamatic', 'domain' => 'castamatic.com' ),
 			'truefans'     => array( 'label' => 'TrueFans', 'domain' => 'truefans.fm' ),
 			'podcastindex' => array( 'label' => 'Podcast Index', 'domain' => 'podcastindex.org' ),
+			'podcastguru'  => array( 'label' => 'Podcast Guru', 'domain' => 'app.podcastguru.io' ),
 		);
 	}
 
@@ -806,6 +808,13 @@ class P20_Link_Resolver {
 					return array( 'url' => 'https://podcastindex.org/podcast/' . rawurlencode( $pguid ), 'episode' => false );
 				}
 				return $feed_id > 0 ? array( 'url' => 'https://podcastindex.org/podcast/' . $feed_id, 'episode' => false ) : null;
+
+			case 'podcastguru':
+				// Guide pattern keyed on the Apple Podcasts id (same as
+				// Podfriend); the episode URL needs Podcast Guru's internal
+				// episode id, so an episode request opens the show.
+				$apple = (int) $r['itunes_id'];
+				return $apple > 0 ? array( 'url' => 'https://app.podcastguru.io/podcast/' . $apple, 'episode' => false ) : null;
 		}
 		return null;
 	}
@@ -1724,7 +1733,7 @@ JS;
 			</table>
 
 			<h2><?php esc_html_e( 'Apps', 'p20-link' ); ?></h2>
-			<p><?php esc_html_e( 'Lower order numbers are listed first. Podfriend only appears for shows that have an Apple Podcasts id; Castamatic, TrueFans and Podcast Index need the podcast:guid (Podcast Index also accepts the feed id).', 'p20-link' ); ?></p>
+			<p><?php esc_html_e( 'Lower order numbers are listed first. Podfriend and Podcast Guru only appear for shows that have an Apple Podcasts id; Castamatic, TrueFans and Podcast Index need the podcast:guid (Podcast Index also accepts the feed id).', 'p20-link' ); ?></p>
 			<table class="widefat striped" style="max-width:900px">
 				<thead><tr>
 					<th><?php esc_html_e( 'App', 'p20-link' ); ?></th>

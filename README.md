@@ -1,6 +1,6 @@
 # Podcast 2.0 Link Resolver
 
-A WordPress plugin that renders smart links to a podcast show or a single episode in **Podcasting 2.0 apps only** (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy, Castamatic, TrueFans, Podcast Index). A pod.link alternative for general podcasts, modelled on V4V MusicLink Pro.
+A WordPress plugin that renders smart links to a podcast show or a single episode in **Podcasting 2.0 apps only** (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy, Castamatic, TrueFans, Podcast Index, Podcast Guru). A pod.link alternative for general podcasts, modelled on V4V MusicLink Pro.
 
 Metadata (title, author, artwork, ids) comes from the [Podcast Index API](https://api.podcastindex.org) (free key + secret).
 
@@ -39,8 +39,9 @@ Patterns come from the Podcast Index's [podcast-platform-links](https://github.c
 | Castamatic | `castamatic.com/guid/{podcast:guid}` | needs a Castamatic-internal id - opens the show |
 | TrueFans | `truefans.fm/{podcast:guid}` | needs a TrueFans-internal id - opens the show |
 | Podcast Index | `podcastindex.org/podcast/{podcast:guid}` (PI feed id also accepted) | no episode permalink documented - opens the show |
+| Podcast Guru | `app.podcastguru.io/podcast/{Apple id}` | needs a Podcast Guru-internal id - opens the show |
 
-Podfriend is keyed on the Apple Podcasts id, so it is hidden for shows that have none. Castamatic, TrueFans and Podcast Index are keyed on the `podcast:guid` (Podcast Index falls back to the feed id) and are hidden when neither is known. When an episode was requested but an app can only link the show, its button says "(opens the show)". If the Podcast Index doesn't know the episode yet, every app falls back to the show and a notice explains why.
+Podfriend and Podcast Guru are keyed on the Apple Podcasts id, so they are hidden for shows that have none. Castamatic, TrueFans and Podcast Index are keyed on the `podcast:guid` (Podcast Index falls back to the feed id) and are hidden when neither is known. When an episode was requested but an app can only link the show, its button says "(opens the show)". If the Podcast Index doesn't know the episode yet, every app falls back to the show and a notice explains why.
 
 Fountain's public URLs use **opaque Fountain ids**, not Podcast Index ids - the guide's numeric `fountain.fm/show|episode/{PI id}` patterns render Fountain's client-side 404 (verified live 2026-11-12). The plugin resolves guid → id through Fountain's public [lookup API](https://fountain.fm/docs/endpoints/search/search-lookup.md) (`POST api.fountain.fm/v1/search/lookup`, no key required) and caches the result: lookups in short transients, the derived URL on the cache row for 30 days (a fresh row entry is served without calling Fountain at all). Links degrade **episode → show → `fountain.fm/discover`**, so the Fountain button always appears and never opens the wrong episode; when it can't open the requested episode the note says what it opens instead ("(opens the show)" / "(opens Fountain)"). Nothing unofficial or fragile - unlike the music plugin's Fountain integration, no build fingerprint is involved.
 
