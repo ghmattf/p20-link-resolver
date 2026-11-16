@@ -390,6 +390,18 @@ check( 'render: discover fallback note', false !== strpos( $nh, '(opens Fountain
 check( 'render: no share/url param leak of API secret', false === strpos( $html, 'SECRET' ) );
 check( 'render: PodcastLink promo above footer', false !== strpos( $html, 'Share a show with' ) && false !== strpos( $html, 'href="https://phafe.com/podcastlink"' ) && strpos( $html, 'phafe.com/podcastlink' ) < strpos( $html, 'Powered by' ) );
 
+// app_link()'s note must survive render()'s link assembly: on an episode page
+// where Fountain can only link the show, the button says "(opens Fountain)".
+$GLOBALS['transients'] = array();
+$wpdb->rows           = array();
+$GLOBALS['http_mock'] = array(
+	'/podcasts/byguid' => array( 'code' => 200, 'body' => $feed_json ),
+	'/episodes/byguid' => array( 'code' => 200, 'body' => $ep_json ),
+);
+$dh = $o->render( array( 'show' => 'discover-guid', 'episode' => 'PC2084' ) );
+check( 'render: fountain discover note reaches HTML', false !== strpos( $dh, '(opens Fountain)' ) );
+check( 'render: other apps still say opens the show', 5 === substr_count( $dh, '(opens the show)' ) );
+
 $html = $o->render( array( 'show' => 'abc-guid', 'header' => 'false' ) );
 check( 'render header=false hides title', false === strpos( $html, 'p20link-title' ) );
 

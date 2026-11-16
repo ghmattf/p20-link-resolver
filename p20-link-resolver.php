@@ -942,6 +942,7 @@ class P20_Link_Resolver {
 				'label'    => $reg['label'],
 				'episode'  => $link['episode'],
 				'icon_url' => $this->app_icon( $slug, $reg ),
+				'note'     => isset( $link['note'] ) ? $link['note'] : '',
 			);
 		}
 
