@@ -84,6 +84,12 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
 - **Plan:** from a machine with network access, open a Podfans show/episode page and record the URL shape (does it accept podcast:guid / episode guid?); only then add registry entry + `app_link()` case + README row + tests.
 
+### 15. App icon preview in settings
+- **Status:** Planned (user picked 2026-11-16; implement only on request)
+- **What:** the Apps settings tab lets an admin override each app's icon URL (`icon_url` / `icon_bg`) but shows no preview - you can't see what the icon looks like (or whether the URL loads) until you save and view the front end.
+- **Where:** the apps table in the settings page render (see `render()`'s Settings tab / apps table where `icon_url` is edited).
+- **Plan:** render a small `<img>` next to each icon URL field (the override URL if set, otherwise the app's default from `app_registry()`), with an `onerror` fallback; escape via `esc_url()`/`esc_attr()`.
+
 ## Closed decisions
 
 - **One edition only** (no standard/Pro split): decided by the user, 2026-11-11.
