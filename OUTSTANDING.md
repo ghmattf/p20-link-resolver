@@ -59,36 +59,19 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **Where:** `output_social_preview_meta()`, `og_buffer_start()`, `og_buffer_end()`; phafe.com theme og output; feed artwork (gif, feed-side).
 - **Plan:** re-send the full param'd `/podcastlink/` URL to @WebpageBot (the crawler's cache of the old snapshot may need to expire first); if text/image is still blank, swap the feed artwork gif for a jpg as og:image (feed-side, outside this repo).
 
-### 11. `note` from `app_link()` never reaches `render_html()` (found 2026-11-13)
-- **Status:** Implemented 2026-11-16 (pending release - remove when shipped)
-- **What:** `render()` copied only `url` / `label` / `episode` / `icon_url` from `app_link()`'s return into `$links`, dropping the `note` key. `render_html()`'s "(opens Fountain)" branch (`isset($link['note']) && 'discover' === $link['note']`) was therefore dead in production - a discover link on an episode page always said "(opens the show)". The harness passed `note` directly to `render_html()`, which is why the test passed.
-- **Where:** `render()`'s `$links[ $slug ] = array(...)` assembly (after the `app_link()` call); `render_html()` note branch.
-- **Fixed 2026-11-16:** `render()` now carries `'note' => isset( $link['note'] ) ? $link['note'] : ''`; a render-level test asserts "(opens Fountain)" appears for a discover link on an episode page and the other apps still say "(opens the show)".
-
-### 12. Podcast Guru as a link target
-- **Status:** Implemented 2026-11-16 (pending release - remove when shipped)
-- **What:** Podcast Guru (iOS, Android, macOS) is a Podcasting 2.0 app with boost support (Boostagrams, Live Boosts, Sat Streaming) but was not in the resolver's registry. GUID support (platform-links guide, read 2026-11-15): show - no podcast:guid form, keyed on `appleID` (`app.podcastguru.io/podcast/${appleID}`); episode - no, needs Podcast Guru's internal episode id, not the episode guid.
-- **Built 2026-11-16:** registry entry (`podcastguru`, domain `app.podcastguru.io`), `app_link()` show case keyed on `itunes_id` (episode degrades to show), README intro/table, admin hint (grouped with Podfriend), plugin header app list, 3 tests (show / omitted without Apple id / episode degrades). Not yet verified live (guide only - listed in the README's "Not yet verified live" section).
-
-### 13. Breez as a link target
+### 11. Breez as a link target
 - **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
 - **What:** Breez (iOS, Android) is a Lightning wallet with a built-in podcast player and boost support (Boostagrams, Sat Streaming, Value) but is not in the resolver's registry.
 - **GUID support (platform-links guide, read 2026-11-15):** show - no podcast:guid form, keyed on `feedURL` (`breez.link/p?feedURL=${encodeURIComponent(feedURL)}`); episode - the episode guid IS used, but as a query param next to the feed URL (`...&episodeID=${encodeURIComponent(episodeGUID)}`), so both patterns still need `feedURL`. The resolver does not store the feed URL today - a Breez case needs a new column (or a fetch) first.
 - **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; cache schema (`create_tables()`) if `feed_url` is added; README app table; `tests/resolver_test.php`.
 - **Plan:** only proceed if we decide to store `feedURL` on the cache row; then show/episode query-param cases + schema bump (`TABLE_VERSION`) + tests.
 
-### 14. Podfans as a link target
+### 12. Podfans as a link target
 - **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
 - **What:** Podfans (web player, podfans.fm) sends boosts and streams per the bLIP-10 reference table but is not in the resolver's registry.
 - **GUID support:** UNKNOWN. Podfans has no entry in the platform-links guide and no show/episode URL pattern is documented anywhere found (site unreachable from the agent sandbox; not verified live). No pattern can be built today.
 - **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
 - **Plan:** from a machine with network access, open a Podfans show/episode page and record the URL shape (does it accept podcast:guid / episode guid?); only then add registry entry + `app_link()` case + README row + tests.
-
-### 15. App icon preview in settings
-- **Status:** Planned (user picked 2026-11-16; implement only on request)
-- **What:** the Apps settings tab lets an admin override each app's icon URL (`icon_url` / `icon_bg`) but shows no preview - you can't see what the icon looks like (or whether the URL loads) until you save and view the front end.
-- **Where:** the apps table in the settings page render (see `render()`'s Settings tab / apps table where `icon_url` is edited).
-- **Plan:** render a small `<img>` next to each icon URL field (the override URL if set, otherwise the app's default from `app_registry()`), with an `onerror` fallback; escape via `esc_url()`/`esc_attr()`.
 
 ## Closed decisions
 

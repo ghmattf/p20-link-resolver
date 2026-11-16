@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.9] - 2026-11-16
+
+- New target app: Podcast Guru (`app.podcastguru.io/podcast/{Apple id}`) - show links keyed on the Apple Podcasts id; an episode request opens the show, since episode URLs need Podcast Guru's internal id. Pattern from the platform-links guide, not yet verified live.
+- Fixed: `app_link()`'s note now reaches the rendered HTML, so Fountain's "(opens Fountain)" note appears on episode pages where Fountain can only link the show (previously it always said "(opens the show)").
+- Settings: each app's Icon URL field now shows a preview of the icon the buttons will use - the override if set, otherwise the app's default favicon; a broken URL hides the preview.
+
 ## [0.1.8] - 2026-11-15
 
 - New target apps: Castamatic (`castamatic.com/guid/{podcast:guid}`), TrueFans (`truefans.fm/{podcast:guid}`) and Podcast Index (`podcastindex.org/podcast/{podcast:guid}`, PI feed id accepted as fallback) - show links only; an episode request opens the show for these three, since their episode URLs need app-internal ids. Patterns from the platform-links guide, not yet verified live.
