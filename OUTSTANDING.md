@@ -7,7 +7,7 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 
 ### 1. Live-verify app URL patterns and Podcast Index field names
 - **Status:** Open (highest priority before a public release) - **Fountain done 2026-11-12** (guid lookup + rendered show/episode pages verified live; the guide's numeric Fountain patterns were dead and are replaced by `fountain_id()`, shipped in 0.1.1).
-- **What:** the remaining three app link patterns (`app_link()` cases `curiocaster` / `podverse` / `podfriend`) come from the Podcast Index platform-links guide, and the API field names (`feed.id`, `feed.podcastGuid`, `feed.itunesId`, `episode.id`, `items[]`, `feeds[]`) come from the docs-api OpenAPI source. None of those were hit live. 0.1.0 was built and tested offline.
+- **What:** the app link patterns not yet hit live (`app_link()` cases `curiocaster` / `podverse` / `podfriend` / `castamatic` / `truefans` / `podcastindex`) come from the Podcast Index platform-links guide, and the API field names (`feed.id`, `feed.podcastGuid`, `feed.itunesId`, `episode.id`, `items[]`, `feeds[]`) come from the docs-api OpenAPI source. None of those were hit live. 0.1.0 was built and tested offline.
 - **Plan:** with real API credentials, resolve one show + one episode and open each remaining app's link by hand; confirm favicon URLs at `https://{domain}/favicon.ico`. Record results in the README's "Verification status" section and delete entries once confirmed. Fix `app_link()` / icon defaults if anything differs, with a test.
 
 ### 2. Direct input in the search box (feed URL, Apple id, podcast guid)
@@ -77,44 +77,23 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
 - **Plan:** show case keyed on `itunes_id` (same pattern as Podfriend), degrade episode -> show; registry entry + `app_link()` case + README row + tests together.
 
-### 14. Castamatic as a link target
-- **Status:** Implemented 2026-11-15 (show-only, keyed on `podcast:guid`; pending release - remove when shipped)
-- **What:** Castamatic (iOS) is a Podcasting 2.0 app with boost support (Boostagrams, Live Boosts, Sat Streaming) but is not in the resolver's registry.
-- **GUID support (platform-links guide, read 2026-11-15):** show - YES, podcast:guid directly (`castamatic.com/guid/${podcastGUID}`); episode - no, `castamatic.com/+${uniqueEpisodeID}` needs Castamatic's internal episode id.
-- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
-- **Plan:** show case keyed on `podcast_guid`, degrade episode -> show; registry entry + `app_link()` case + README row + tests together.
-
-### 15. Breez as a link target
+### 14. Breez as a link target
 - **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
 - **What:** Breez (iOS, Android) is a Lightning wallet with a built-in podcast player and boost support (Boostagrams, Sat Streaming, Value) but is not in the resolver's registry.
 - **GUID support (platform-links guide, read 2026-11-15):** show - no podcast:guid form, keyed on `feedURL` (`breez.link/p?feedURL=${encodeURIComponent(feedURL)}`); episode - the episode guid IS used, but as a query param next to the feed URL (`...&episodeID=${encodeURIComponent(episodeGUID)}`), so both patterns still need `feedURL`. The resolver does not store the feed URL today - a Breez case needs a new column (or a fetch) first.
 - **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; cache schema (`create_tables()`) if `feed_url` is added; README app table; `tests/resolver_test.php`.
 - **Plan:** only proceed if we decide to store `feedURL` on the cache row; then show/episode query-param cases + schema bump (`TABLE_VERSION`) + tests.
 
-### 16. TrueFans as a link target
-- **Status:** Implemented 2026-11-15 (show-only, keyed on `podcast:guid`; pending release - remove when shipped)
-- **What:** TrueFans (hosting + player, many platforms) is a Podcasting 2.0 app with boost support (Boostagrams, Live Boosts, Sat Streaming) but is not in the resolver's registry.
-- **GUID support (platform-links guide, read 2026-11-15):** show - YES, podcast:guid directly (`truefans.fm/${podcastGUID}`); episode - no, `truefans.fm/${slug}/${uniqueEpisodeID}` needs TrueFans' internal episode id (live example seen: `truefans.fm/better-podcasting/663c04008bab351c5ff1c73f` - not a guid).
-- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
-- **Plan:** show case keyed on `podcast_guid`, degrade episode -> show; registry entry + `app_link()` case + README row + tests together.
-
-### 17. Podfans as a link target
+### 15. Podfans as a link target
 - **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
 - **What:** Podfans (web player, podfans.fm) sends boosts and streams per the bLIP-10 reference table but is not in the resolver's registry.
 - **GUID support:** UNKNOWN. Podfans has no entry in the platform-links guide and no show/episode URL pattern is documented anywhere found (site unreachable from the agent sandbox; not verified live). No pattern can be built today.
 - **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
 - **Plan:** from a machine with network access, open a Podfans show/episode page and record the URL shape (does it accept podcast:guid / episode guid?); only then add registry entry + `app_link()` case + README row + tests.
 
-### 18. podcastindex.org as a link target
-- **Status:** Implemented 2026-11-15 (show-only, guid with feed-id fallback; pending release - remove when shipped)
-- **What:** podcastindex.org is the Podcast Index directory itself - not a player app (no boosts), but a stable show permalink page worth linking to. Shown as a show link only.
-- **GUID support (platform-links guide, read 2026-11-15):** show - YES, both forms documented in the guide's Resource Links table (`podcastindex.org/podcast/${podcastIndexShowID}` and `podcastindex.org/podcast/${podcastGUID}`); episode - no episode URL pattern in the guide at all (shows only; whether the site has episode permalinks is unverified).
-- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
-- **Plan:** shipped as `app_link('podcastindex')` - guid form with feed-id fallback, episode degrades to show. Live verification still outstanding (README "not verified live" list); add an episode case only if the site turns out to have permalinks.
-
 ## Closed decisions
 
 - **One edition only** (no standard/Pro split): decided by the user, 2026-11-11.
-- **Apps limited to Podcasting 2.0 apps** (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy); no Apple/Spotify-style mainstream targets.
+- **Apps limited to Podcasting 2.0 apps** (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy, Castamatic, TrueFans, Podcast Index); no Apple/Spotify-style mainstream targets.
 - **Link level is show + episode** (not show-only).
 - **Fountain always renders a button**, degrading episode → show → `fountain.fm/discover` (user decision 2026-11-12); supersedes 0.1.2's "omit the button on an unreliable lookup" policy.

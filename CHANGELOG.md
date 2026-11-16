@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.8] - 2026-11-15
+
+- New target apps: Castamatic (`castamatic.com/guid/{podcast:guid}`), TrueFans (`truefans.fm/{podcast:guid}`) and Podcast Index (`podcastindex.org/podcast/{podcast:guid}`, PI feed id accepted as fallback) - show links only; an episode request opens the show for these three, since their episode URLs need app-internal ids. Patterns from the platform-links guide, not yet verified live.
+
 ## [0.1.7] - 2026-11-15
 
 - Search screen H1 renamed to "PodcastLink" (was "PodcastLinker"), matching the footer promo.
