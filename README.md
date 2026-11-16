@@ -71,8 +71,14 @@ Verified live on 2026-11-12:
 - Fountain: guid → id lookup (show and episode, no API key) and the rendered `fountain.fm/show/{id}` / `fountain.fm/episode/{id}` pages; the guide's numeric patterns confirmed dead (client-side 404)
 - BoostMeBuddy: the show and episode query-param URLs both render the right target; its site has no `/favicon.ico`, so the plugin defaults its icon to `https://www.boostmebuddy.com/icons/buddy/favicon.svg`
 
-Not yet verified live - confirmed only against the documentation:
+Verified live on 2026-11-16 (tested by Matt):
 
 - The CurioCaster, Podverse, Podfriend, Castamatic, TrueFans and Podcast Index URL patterns (from the platform-links guide)
 - The Podcast Index response field names (`feed.id`, `feed.podcastGuid`, `feed.itunesId`, `episode.id`, `items[]`, `feeds[]`)
-- App favicons at `https://{domain}/favicon.ico` - override any icon in settings if one doesn't load
+- The default favicons at `https://{domain}/favicon.ico`
+
+Not yet verified live - confirmed only against the documentation:
+
+- The Podcast Guru pattern (added 2026-11-16; from the platform-links guide)
+
+Override any app icon in settings if one doesn't load.
