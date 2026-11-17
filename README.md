@@ -32,8 +32,8 @@ Patterns come from the Podcast Index's [podcast-platform-links](https://github.c
 | App | Show link | Episode link |
 |---|---|---|
 | Fountain | `fountain.fm/show/{Fountain id}` resolved from `podcast:guid` | `fountain.fm/episode/{Fountain id}` resolved from the episode guid |
-| CurioCaster | `curiocaster.com/podcast/pi{PI feed id}` | none documented - opens the show |
-| Podverse | `api.podverse.fm/api/v1/podcast/podcastindex/{PI feed id}` | needs a Podverse-internal id - opens the show |
+| CurioCaster | `curiocaster.com/podcast/pi{PI feed id}` | no episode route (verified 2026-11-16) - opens the show |
+| Podverse | `api.podverse.fm/api/v1/podcast/podcastindex/{PI feed id}` | `podverse.fm/episode/{Podverse id}` resolved from PI feed id + episode guid |
 | Podfriend | `podfriend.com/podcast/{Apple id}` | `podfriend.com/podcast/{Apple id}/{encodeURIComponent(episode guid)}` |
 | BoostMeBuddy | `www.boostmebuddy.com/?podcast={podcast:guid}` | `www.boostmebuddy.com/?podcast={podcast:guid}&episode={episode guid}` |
 | Castamatic | `castamatic.com/guid/{podcast:guid}` | needs a Castamatic-internal id - opens the show |
@@ -42,6 +42,8 @@ Patterns come from the Podcast Index's [podcast-platform-links](https://github.c
 | Podcast Guru | `app.podcastguru.io/podcast/{Apple id}` | needs a Podcast Guru-internal id - opens the show |
 
 Podfriend and Podcast Guru are keyed on the Apple Podcasts id, so they are hidden for shows that have none. Castamatic, TrueFans and Podcast Index are keyed on the `podcast:guid` (Podcast Index falls back to the feed id) and are hidden when neither is known. When an episode was requested but an app can only link the show, its button says "(opens the show)". If the Podcast Index doesn't know the episode yet, every app falls back to the show and a notice explains why.
+
+Podverse episode links are resolved through Podverse's public url-resolver (`GET api.podverse.fm/api/v1/url-resolver/episode?podcastIndexId={PI feed id}&episodeGuid={guid}` -> `{"webUrl":"https://podverse.fm/episode/{id}"}`, no key required) and cached like the Fountain lookups; a miss or lookup failure falls back to the show link. CurioCaster has no episode route at all - its client route list contains only `/`, `/fn`, `/podcast` and `/podcast/[podcastid]` (verified live 2026-11-16) - so its episode link opens the show.
 
 Fountain's public URLs use **opaque Fountain ids**, not Podcast Index ids - the guide's numeric `fountain.fm/show|episode/{PI id}` patterns render Fountain's client-side 404 (verified live 2026-11-12). The plugin resolves guid → id through Fountain's public [lookup API](https://fountain.fm/docs/endpoints/search/search-lookup.md) (`POST api.fountain.fm/v1/search/lookup`, no key required) and caches the result: lookups in short transients, the derived URL on the cache row for 30 days (a fresh row entry is served without calling Fountain at all). Links degrade **episode → show → `fountain.fm/discover`**, so the Fountain button always appears and never opens the wrong episode; when it can't open the requested episode the note says what it opens instead ("(opens the show)" / "(opens Fountain)"). Nothing unofficial or fragile - unlike the music plugin's Fountain integration, no build fingerprint is involved.
 
@@ -76,6 +78,11 @@ Verified live on 2026-11-16 (tested by Matt):
 - The CurioCaster, Podverse, Podfriend, Castamatic, TrueFans and Podcast Index URL patterns (from the platform-links guide)
 - The Podcast Index response field names (`feed.id`, `feed.podcastGuid`, `feed.itunesId`, `episode.id`, `items[]`, `feeds[]`)
 - The default favicons at `https://{domain}/favicon.ico`
+
+Verified live on 2026-11-16 (agent):
+
+- Podverse's url-resolver endpoint: `GET api.podverse.fm/api/v1/url-resolver/episode?podcastIndexId={PI feed id}&episodeGuid={guid}` returns `{"webUrl":"https://podverse.fm/episode/{id}"}` (200) or `{"message":"Episode not found"}` (404); the show resolver returns the `podverse.fm/podcast/{id}` redirect target
+- CurioCaster's client route list: only `/`, `/fn`, `/podcast` and `/podcast/[podcastid]` - no episode route exists
 
 Not yet verified live - confirmed only against the documentation:
 

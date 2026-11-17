@@ -67,12 +67,18 @@ class P20_Link_Resolver {
 	const FOUNTAIN_API        = 'https://api.fountain.fm/v1';
 	const FOUNTAIN_HIT_TTL    = 30 * DAY_IN_SECONDS; // Fountain ids are permanent.
 	const FOUNTAIN_SCHEMA     = 1;        // Bump to invalidate remembered Fountain lookups.
+	const PODVERSE_API        = 'https://api.podverse.fm/api/v1';
+	const PODVERSE_HIT_TTL    = 30 * DAY_IN_SECONDS; // Podverse episode URLs are stable.
+	const PODVERSE_FAIL_TTL   = HOUR_IN_SECONDS;     // Definitive Podverse misses (PI neg_ttl policy).
 
 	/** HTTP status of the last Podcast Index call (0 = transport/undecodable). */
 	private $last_status = 0;
 
 	/** HTTP status of the last Fountain lookup (0 = transport/undecodable). */
 	private $fountain_status = 0;
+
+	/** HTTP status of the last Podverse url-resolver call (0 = transport/undecodable). */
+	private $podverse_status = 0;
 
 	/** True only while rendering a page: allows queueing background refreshes. */
 	private $refresh_allowed = false;
@@ -538,6 +544,95 @@ class P20_Link_Resolver {
 		return ( 200 === $this->fountain_status || 404 === $this->fountain_status ) ? self::FOUNTAIN_FAIL_TTL : self::SOFT_FAIL_TTL;
 	}
 
+	/**
+	 * Podverse episode URL: PI feed id + episode guid -> podverse.fm/episode/{id}
+	 * through Podverse's public url-resolver (verified live 2026-11-16).
+	 * Returns the URL, '' for a definitive miss (404), or null for an
+	 * unreliable answer (transport, 5xx, undecodable body) or a spent
+	 * resolve budget - mirroring fountain_id()'s contract and cache shape.
+	 */
+	private function podverse_episode_url( $feed_id, $episode_guid ) {
+		$feed_id      = (int) $feed_id;
+		$episode_guid = (string) $episode_guid;
+		if ( $feed_id <= 0 || '' === $episode_guid ) {
+			return '';
+		}
+		$key    = 'p20l_pve_' . md5( $feed_id . '|' . $episode_guid );
+		$cached = get_transient( $key );
+		if ( false !== $cached ) {
+			return '~' === $cached ? null : (string) $cached;
+		}
+		// Budget rejection happens before any HTTP and remembers nothing
+		// (same policy as fountain_id() and resolve_release()).
+		if ( ! $this->may_call_upstream() ) {
+			return null;
+		}
+		$url = $this->podverse_lookup( $feed_id, $episode_guid );
+		if ( is_string( $url ) ) {
+			set_transient( $key, $url, '' !== $url ? self::PODVERSE_HIT_TTL : $this->podverse_ttl() );
+			return $url;
+		}
+		// Unreliable answer: remember briefly under a value outside the
+		// accepted URL shape so a soft miss can never be read back as a
+		// definitive one ('https://' never starts with '~').
+		set_transient( $key, '~', $this->podverse_ttl() );
+		return null;
+	}
+
+	/**
+	 * One GET to Podverse's url-resolver. Returns the full episode URL,
+	 * '' for a definitive miss (404), or null for an unreliable answer
+	 * (transport error, 5xx, undecodable 200). Only the exact guide
+	 * shape https://podverse.fm/episode/{id} is accepted, so a
+	 * surprising payload can never reach the rendered link.
+	 */
+	private function podverse_lookup( $feed_id, $episode_guid ) {
+		$url = self::PODVERSE_API . '/url-resolver/episode?' . http_build_query(
+			array(
+				'podcastIndexId' => $feed_id,
+				'episodeGuid'    => $episode_guid,
+			),
+			'',
+			'&',
+			PHP_QUERY_RFC3986
+		);
+
+		// redirection => 0: never follow a remote redirect (SSRF hardening).
+		$response = wp_remote_get( $url, array(
+			'timeout'     => 8,
+			'redirection' => 0,
+			'headers'     => array(
+				'Accept'     => 'application/json',
+				'User-Agent' => 'P20LinkResolver/' . self::VERSION . ' (' . home_url() . ')',
+			),
+		) );
+
+		if ( is_wp_error( $response ) ) {
+			$this->podverse_status = 0;
+			return null;
+		}
+		$this->podverse_status = (int) wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $this->podverse_status ) {
+			return 404 === $this->podverse_status ? '' : null;
+		}
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $body ) || empty( $body['webUrl'] ) ) {
+			$this->podverse_status = 0; // An undecodable 200 proves nothing.
+			return null;
+		}
+		$found = (string) $body['webUrl'];
+		if ( ! preg_match( '#^https://podverse\.fm/episode/[A-Za-z0-9_-]{1,128}$#', $found ) ) {
+			$this->podverse_status = 0; // Not the guide's shape: refuse it.
+			return null;
+		}
+		return $found;
+	}
+
+	/** TTL for a remembered Podverse miss: 404 is definitive, everything else retries in 30 s. */
+	private function podverse_ttl() {
+		return 404 === $this->podverse_status ? self::PODVERSE_FAIL_TTL : self::SOFT_FAIL_TTL;
+	}
+
 	/* ------------------------------------------------------------------ *
 	 * Release resolution (cache-first)
 	 * ------------------------------------------------------------------ */
@@ -764,8 +859,19 @@ class P20_Link_Resolver {
 				return $feed_id > 0 ? array( 'url' => 'https://curiocaster.com/podcast/pi' . $feed_id, 'episode' => false ) : null;
 
 			case 'podverse':
-				// Podverse episode links need a Podverse-internal id we cannot derive.
-				return $feed_id > 0 ? array( 'url' => 'https://api.podverse.fm/api/v1/podcast/podcastindex/' . $feed_id, 'episode' => false ) : null;
+				if ( $feed_id <= 0 ) {
+					return null;
+				}
+				// Episode links resolve the Podverse id from the PI feed id +
+				// episode guid via Podverse's public url-resolver (live-verified
+				// 2026-11-16); a miss or lookup failure degrades to the show.
+				if ( $has_ep ) {
+					$url = $this->podverse_episode_url( $feed_id, $ep_guid );
+					if ( is_string( $url ) && '' !== $url ) {
+						return array( 'url' => $url, 'episode' => true );
+					}
+				}
+				return array( 'url' => 'https://api.podverse.fm/api/v1/podcast/podcastindex/' . $feed_id, 'episode' => false );
 
 			case 'podfriend':
 				$apple = (int) $r['itunes_id'];

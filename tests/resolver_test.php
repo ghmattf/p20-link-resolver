@@ -180,8 +180,36 @@ $l = call( $o, 'app_link', 'podfriend', $ep );
 check( 'podfriend episode link encodes guid', 'https://podfriend.com/podcast/1234/PC2084%2Fa%20b' === $l['url'] && $l['episode'] );
 $l = call( $o, 'app_link', 'curiocaster', $ep );
 check( 'curiocaster episode degrades to show', ! $l['episode'] && 'https://curiocaster.com/podcast/pi75075' === $l['url'] );
+
+// Podverse episode links resolve the Podverse id through the public
+// url-resolver (PI feed id + episode guid, live-verified 2026-11-16).
+$GLOBALS['http_mock']['url-resolver/episode'] = array( 'code' => 200, 'body' => json_encode( array( 'webUrl' => 'https://podverse.fm/episode/8kDmgoJKa' ) ) );
 $l = call( $o, 'app_link', 'podverse', $ep );
-check( 'podverse episode degrades to show', ! $l['episode'] );
+check( 'podverse episode link', 'https://podverse.fm/episode/8kDmgoJKa' === $l['url'] && $l['episode'] );
+$pv_req = end( $GLOBALS['http_log'] );
+check( 'podverse lookup hits url-resolver with PI ids',
+	false !== strpos( $pv_req[0], 'url-resolver/episode?podcastIndexId=75075' )
+	&& false !== strpos( $pv_req[0], 'episodeGuid=PC2084%2Fa%20b' )
+	&& 0 === $pv_req[1]['redirection'] );
+$n = count( $GLOBALS['http_log'] );
+call( $o, 'app_link', 'podverse', $ep );
+check( 'podverse episode URL remembered', count( $GLOBALS['http_log'] ) === $n );
+$GLOBALS['http_mock']['url-resolver/episode'] = array( 'code' => 404, 'body' => '{"message":"Episode not found"}' );
+$pv_miss = $ep; $pv_miss['episode_guid'] = 'podverse-unknown-guid';
+$l = call( $o, 'app_link', 'podverse', $pv_miss );
+check( 'podverse unknown episode degrades to show', ! $l['episode'] && 'https://api.podverse.fm/api/v1/podcast/podcastindex/75075' === $l['url'] );
+$n = count( $GLOBALS['http_log'] );
+call( $o, 'app_link', 'podverse', $pv_miss );
+check( 'podverse miss remembered', count( $GLOBALS['http_log'] ) === $n );
+$GLOBALS['http_mock']['url-resolver/episode'] = array( 'code' => 500, 'body' => '' );
+$pv_err = $ep; $pv_err['episode_guid'] = 'podverse-500-guid';
+$l = call( $o, 'app_link', 'podverse', $pv_err );
+check( 'podverse server error degrades to show', ! $l['episode'] && 'https://api.podverse.fm/api/v1/podcast/podcastindex/75075' === $l['url'] );
+check( 'podverse omitted without feed id', null === call( $o, 'app_link', 'podverse', $noid ) );
+unset( $GLOBALS['http_mock']['url-resolver/episode'] );
+$pv_nomock = $ep; $pv_nomock['episode_guid'] = 'podverse-no-mock-guid';
+$l = call( $o, 'app_link', 'podverse', $pv_nomock ); // no mock -> default 404 (the pre-0.1.10 behaviour)
+check( 'podverse episode without resolver mock still degrades', ! $l['episode'] );
 $l = call( $o, 'app_link', 'boostmebuddy', $ep );
 check( 'boostmebuddy episode link', 'https://www.boostmebuddy.com/?podcast=g&episode=PC2084%2Fa%20b' === $l['url'] && $l['episode'] );
 $miss_ep = $ep; $miss_ep['episode_missing'] = true;
