@@ -11,11 +11,11 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **Where:** `ajax_search()`, `inline_js()` search handler.
 - **Plan:** detect a URL (`podcasts/byfeedurl`), an `id123456` / numeric Apple id (`podcasts/byitunesid`) or a UUID (`podcasts/byguid`) and jump straight to the result.
 
-### 2. Episode links for Podverse and CurioCaster
-- **Status:** Open
-- **What:** Podverse needs a Podverse-internal episode id and CurioCaster has no documented episode pattern, so both degrade to the show link today.
-- **Where:** `app_link()` cases `podverse` / `curiocaster`.
-- **Plan:** check whether Podverse's API can map a Podcast Index episode id or guid to its id (would need a resolver + cache column), and whether CurioCaster has since added episode routes. Update the platform-links table in the README if so.
+### 2. Podverse episode links - pending release
+- **Status:** Open (implemented 2026-11-16, not yet released - remove this item when it ships)
+- **What:** Podverse episode links now resolve through Podverse's public url-resolver (`GET api.podverse.fm/api/v1/url-resolver/episode?podcastIndexId={PI feed id}&episodeGuid={guid}` -> `podverse.fm/episode/{id}`, no key), cached like the Fountain lookups, degrading to the show on miss/failure.
+- **Where:** `podverse_episode_url()` / `podverse_lookup()` / `podverse_ttl()` and `app_link()` case `podverse` in `p20-link-resolver.php`; tests in `tests/resolver_test.php`; README table + verification section.
+- **CurioCaster (concluded 2026-11-16):** no episode route exists - its client route list is only `/`, `/fn`, `/podcast` and `/podcast/[podcastid]` (verified live), so the show link is all there is. Reopen only if the platform-links guide gains a CurioCaster episode row.
 
 ### 3. Cache tab: per-row editing
 - **Status:** Open
@@ -66,16 +66,11 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; cache schema (`create_tables()`) if `feed_url` is added; README app table; `tests/resolver_test.php`.
 - **Plan:** only proceed if we decide to store `feedURL` on the cache row; then show/episode query-param cases + schema bump (`TABLE_VERSION`) + tests.
 
-### 12. Podfans as a link target
-- **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
-- **What:** Podfans (web player, podfans.fm) sends boosts and streams per the bLIP-10 reference table but is not in the resolver's registry.
-- **GUID support:** UNKNOWN. Podfans has no entry in the platform-links guide and no show/episode URL pattern is documented anywhere found (site unreachable from the agent sandbox; not verified live). No pattern can be built today.
-- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
-- **Plan:** from a machine with network access, open a Podfans show/episode page and record the URL shape (does it accept podcast:guid / episode guid?); only then add registry entry + `app_link()` case + README row + tests.
-
 ## Closed decisions
 
 - **One edition only** (no standard/Pro split): decided by the user, 2026-11-11.
 - **Apps limited to Podcasting 2.0 apps** (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy, Castamatic, TrueFans, Podcast Index, Podcast Guru); no Apple/Spotify-style mainstream targets.
 - **Link level is show + episode** (not show-only).
 - **Fountain always renders a button**, degrading episode → show → `fountain.fm/discover` (user decision 2026-11-12); supersedes 0.1.2's "omit the button on an unreliable lookup" policy.
+- **Podfans**: dropped by the user 2026-11-16 - no documented URL pattern, site unreachable from the sandbox.
+- **CurioCaster episode links**: concluded 2026-11-16 - no episode route exists (client route list verified live); nothing to build until the guide gains a pattern.
