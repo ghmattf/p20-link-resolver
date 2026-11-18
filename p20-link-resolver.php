@@ -545,6 +545,134 @@ class P20_Link_Resolver {
 	}
 
 	/**
+	 * Resolve a pasted Fountain share link (…/show/{id} or …/episode/{id})
+	 * into the guids a resolver page needs.
+	 *
+	 * Returns null when $q is not a Fountain share link, array('ref' => …,
+	 * 'episode' => …) when resolved, array() for a definitive miss and
+	 * false for an unreliable answer - ajax_search() turns those into empty
+	 * results and a 502 respectively.
+	 */
+	private function search_fountain_link( $q ) {
+		$q = trim( (string) $q );
+		if ( ! preg_match( '~^(?:https?://)?(?:www\.)?fountain\.fm/(show|episode)/([A-Za-z0-9_-]{1,64})(?:[/?#].*)?$~i', $q, $m ) ) {
+			return null;
+		}
+		$kind  = strtolower( $m[1] );
+		$id    = $m[2];
+		$canon = 'https://fountain.fm/' . $kind . '/' . $id;
+
+		// The derived URL is remembered on the cache row (fountain_url):
+		// matching it recovers the guids with no upstream call at all.
+		$row = $this->cache_row_by_fountain_url( $canon );
+		if ( $row && ! empty( $row->show_ref ) ) {
+			$ref = $this->guard_show( $row->show_ref );
+			if ( '' !== $ref ) {
+				$ep = ( 'episode' === $kind && ! empty( $row->episode_guid ) ) ? $this->guard_episode( $row->episode_guid ) : '';
+				if ( 'show' === $kind || '' !== $ep ) {
+					return array( 'ref' => $ref, 'episode' => $ep );
+				}
+			}
+		}
+
+		// Not cached: ask Fountain's content API for the guids behind the id.
+		$key    = 'p20l_frv_' . self::FOUNTAIN_SCHEMA . '_' . md5( $kind . '|' . $id );
+		$cached = get_transient( $key );
+		if ( false !== $cached ) {
+			if ( '~' === $cached ) {
+				return false;
+			}
+			if ( '' === $cached ) {
+				return array();
+			}
+			return is_array( $cached ) ? $cached : array();
+		}
+		$found = $this->fountain_reverse( $kind, $id );
+		if ( is_array( $found ) ) {
+			set_transient( $key, $found, self::FOUNTAIN_HIT_TTL );
+			return $found;
+		}
+		if ( '' === $found ) {
+			set_transient( $key, '', self::FOUNTAIN_FAIL_TTL );
+			return array();
+		}
+		set_transient( $key, '~', self::SOFT_FAIL_TTL );
+		return false;
+	}
+
+	/**
+	 * One GET to Fountain's content endpoint ({type}:id:{fountain id}) -
+	 * the reverse of fountain_id(). Returns array('ref' => podcast guid,
+	 * 'episode' => episode guid or ''), '' for a definitive miss (404, or
+	 * a readable hit without usable guids), or null for an unreliable
+	 * answer (transport, 5xx, undecodable body).
+	 */
+	private function fountain_reverse( $kind, $fountain_id ) {
+		// redirection => 0: never follow a remote redirect (SSRF hardening).
+		$response = wp_remote_get( self::FOUNTAIN_API . '/content/' . $kind . ':id:' . $fountain_id, array(
+			'timeout'     => 8,
+			'redirection' => 0,
+			'headers'     => array(
+				'Accept'     => 'application/json',
+				'User-Agent' => 'P20LinkResolver/' . self::VERSION . ' (' . home_url() . ')',
+			),
+		) );
+
+		if ( is_wp_error( $response ) ) {
+			$this->fountain_status = 0;
+			return null;
+		}
+		$this->fountain_status = (int) wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $this->fountain_status ) {
+			return 404 === $this->fountain_status ? '' : null;
+		}
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $body ) || ! isset( $body['hit'] ) || ! is_array( $body['hit'] ) ) {
+			$this->fountain_status = 0; // An undecodable 200 proves nothing.
+			return null;
+		}
+		$hit  = $body['hit'];
+		$type = isset( $hit['_type'] ) ? strtoupper( (string) $hit['_type'] ) : '';
+		$want = 'show' === $kind ? 'SHOW' : 'EPISODE';
+		if ( $want !== $type ) {
+			$this->fountain_status = 0;
+			return null;
+		}
+		if ( 'show' === $kind ) {
+			$ref = $this->guard_show( isset( $hit['_guid'] ) ? $hit['_guid'] : '' );
+			return '' !== $ref ? array( 'ref' => $ref, 'episode' => '' ) : '';
+		}
+		$episode = $this->guard_episode( isset( $hit['_guid'] ) ? $hit['_guid'] : '' );
+		$parent  = '';
+		if ( isset( $body['parent'] ) && is_array( $body['parent'] ) ) {
+			$parent = $this->guard_show( isset( $body['parent']['_guid'] ) ? $body['parent']['_guid'] : '' );
+		}
+		if ( '' === $parent && isset( $hit['links'] ) && is_array( $hit['links'] ) ) {
+			foreach ( $hit['links'] as $link ) {
+				if ( is_string( $link ) && 0 === strpos( $link, 'show:guid:' ) ) {
+					$parent = $this->guard_show( substr( $link, 10 ) );
+					if ( '' !== $parent ) {
+						break;
+					}
+				}
+			}
+		}
+		return ( '' !== $episode && '' !== $parent ) ? array( 'ref' => $parent, 'episode' => $episode ) : '';
+	}
+
+	/**
+	 * Find a cache row by its remembered Fountain URL (reverse of the
+	 * derived link). fountain_url is unindexed, but this only runs for a
+	 * pasted Fountain link and the cache table is one row per
+	 * show/episode, so the scan stays cheap.
+	 */
+	private function cache_row_by_fountain_url( $url ) {
+		global $wpdb;
+		$table = $this->cache_table();
+		return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE fountain_url = %s LIMIT 1", (string) $url ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
 	 * Podverse episode URL: PI feed id + episode guid -> podverse.fm/episode/{id}
 	 * through Podverse's public url-resolver (verified live 2026-11-16).
 	 * Returns the URL, '' for a definitive miss (404), or null for an
@@ -1337,7 +1465,26 @@ class P20_Link_Resolver {
 		}
 
 		$q = isset( $_POST['q'] ) ? trim( sanitize_text_field( wp_unslash( $_POST['q'] ) ) ) : '';
-		if ( '' === $q || mb_strlen( $q ) > 100 ) {
+		if ( '' === $q ) {
+			wp_send_json_error( array( 'message' => 'bad query' ), 400 );
+		}
+
+		// A pasted Fountain share link resolves to guids and jumps straight
+		// to that page: remembered cache-row URL first, then Fountain's
+		// content API. Checked before the length cap so long share URLs
+		// (utm params etc.) still work.
+		$fountain = $this->search_fountain_link( $q );
+		if ( null !== $fountain ) {
+			if ( false === $fountain ) {
+				wp_send_json_error( array( 'message' => 'fountain' ), 502 );
+			}
+			if ( array() === $fountain ) {
+				wp_send_json_success( array( 'shows' => array() ) );
+			}
+			wp_send_json_success( array( 'direct' => $fountain ) );
+		}
+
+		if ( mb_strlen( $q ) > 100 ) {
 			wp_send_json_error( array( 'message' => 'bad query' ), 400 );
 		}
 		$ck  = 'p20l_s_' . self::SEARCH_CACHE_SCHEMA . '_q_' . md5( strtolower( $q ) );
@@ -1691,6 +1838,7 @@ class P20_Link_Resolver {
 						list.innerHTML = ''; pager.hidden = true; back.hidden = true;
 						post({ action: 'p20link_search', nonce: cfg.nonce, type: 'shows', q: q }).then(function (res) {
 							if (!res || !res.success) { status.textContent = t.error; return; }
+							if (res.data.direct) { go(res.data.direct.ref, res.data.direct.episode || ''); return; }
 							shows = res.data.shows || [];
 							page = 0;
 							status.textContent = shows.length ? '' : t.noResults;

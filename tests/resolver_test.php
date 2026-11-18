@@ -58,6 +58,26 @@ function selected( $a, $b = '', $echo = true ) {
 	return $r;
 }
 function submit_button( $t = null, $type = 'primary', $name = 'submit', $wrap = true ) { echo '<p class="submit"><input type="submit" /></p>'; }
+// wp_send_json_* exits in WordPress; here they throw so tests can catch the payload.
+class P20_Json_Response extends Exception {
+	public $ok = false;
+	public $payload = null;
+	public $status = 0;
+}
+function wp_send_json_success( $data = null ) {
+	$e = new P20_Json_Response( 'json' );
+	$e->ok = true;
+	$e->payload = $data;
+	throw $e;
+}
+function wp_send_json_error( $data = null, $code = null ) {
+	$e = new P20_Json_Response( 'json' );
+	$e->ok = false;
+	$e->payload = $data;
+	$e->status = (int) $code;
+	throw $e;
+}
+function check_ajax_referer( $action, $query_arg = false, $die = true ) { return true; }
 function wp_remote_get( $url, $args ) {
 	$GLOBALS['http_log'][] = array( $url, $args );
 	foreach ( $GLOBALS['http_mock'] as $needle => $resp ) {
@@ -88,6 +108,17 @@ class FakeWpdb {
 	public function prepare( $sql, ...$args ) { return 'HASH:' . $args[0]; }
 	public function get_row( $q ) {
 		$h = substr( $q, 5 );
+		// prepare() yields "HASH:<value>": lookup_hash rows are keyed by
+		// hash; a value starting with http means a fountain_url query
+		// (cache_row_by_fountain_url), which scans for a matching row.
+		if ( 0 === strpos( $h, 'http' ) ) {
+			foreach ( $this->rows as $row ) {
+				if ( isset( $row['fountain_url'] ) && $row['fountain_url'] === $h ) {
+					return (object) $row;
+				}
+			}
+			return null;
+		}
 		return isset( $this->rows[ $h ] ) ? (object) $this->rows[ $h ] : null;
 	}
 	public function replace( $t, $data ) { $this->rows[ $data['lookup_hash'] ] = $data; return 1; }
@@ -555,6 +586,123 @@ $out = ob_get_clean();
 check( 'og buffer: failed resolve keeps theme tags', false !== strpos( $out, 'content=" "' ) && false === strpos( $out, 'og:title' ) );
 unset( $_GET['show'], $GLOBALS['is_singular'], $GLOBALS['fake_post'] );
 $GLOBALS['opts']['p20link_social_preview'] = 'on';
+
+// --- fountain share-link search (paste a fountain.fm URL into the search box) ---
+// Reverse of /search/lookup: GET /v1/content/{type}:id:{20-char id} -> guid(s).
+// Live-verified 2026-11-16 with the user's own example ids (show
+// DGn4FIswSZciwkqcow5d, episode 1Q17yntZitfbLF4Fm2vx), round-tripped back
+// through /search/lookup to prove _guid is the podcast/episode guid.
+$GLOBALS['http_mock'] = array();
+
+// Not a Fountain share link -> null (plain titles keep using byterm search).
+check( 'fountain search ignores a plain title', null === call( $o, 'search_fountain_link', 'some podcast' ) );
+check( 'fountain search ignores other URLs', null === call( $o, 'search_fountain_link', 'https://podlink.example/show/x' ) );
+
+// Cache hit: the derived fountain_url on the row recovers the guids with no HTTP.
+$wpdb->rows['fsearch1'] = array(
+	'lookup_hash'  => 'fsearch1',
+	'show_ref'     => '254ceab2-c561-5479-bf9f-6980f7015689',
+	'episode_guid' => '',
+	'fountain_url' => 'https://fountain.fm/show/CacheShowId000000001',
+);
+$n = count( $GLOBALS['http_log'] );
+check( 'fountain search show link from cache',
+	array( 'ref' => '254ceab2-c561-5479-bf9f-6980f7015689', 'episode' => '' ) === call( $o, 'search_fountain_link', 'https://fountain.fm/show/CacheShowId000000001' )
+	&& count( $GLOBALS['http_log'] ) === $n );
+$wpdb->rows['fsearch2'] = array(
+	'lookup_hash'  => 'fsearch2',
+	'show_ref'     => '254ceab2-c561-5479-bf9f-6980f7015689',
+	'episode_guid' => 'a961bb32-5ebc-4d1e-ba68-30242271fa1b',
+	'fountain_url' => 'https://fountain.fm/episode/CacheEpId0000000001',
+);
+$n = count( $GLOBALS['http_log'] );
+check( 'fountain search episode link from cache, query string ignored',
+	array( 'ref' => '254ceab2-c561-5479-bf9f-6980f7015689', 'episode' => 'a961bb32-5ebc-4d1e-ba68-30242271fa1b' ) === call( $o, 'search_fountain_link', 'fountain.fm/episode/CacheEpId0000000001?utm_source=share' )
+	&& count( $GLOBALS['http_log'] ) === $n );
+
+// Cache miss: one GET to Fountain's content API returns the guids, remembered.
+$GLOBALS['http_mock']['content/show:id:ApiShowId0000000001'] = array( 'code' => 200, 'body' => json_encode( array(
+	'hit' => array( '_id' => 'ApiShowId0000000001', '_guid' => '11111111-2222-3333-4444-555555555555', '_type' => 'SHOW' ),
+) ) );
+check( 'fountain search show via content API',
+	array( 'ref' => '11111111-2222-3333-4444-555555555555', 'episode' => '' ) === call( $o, 'search_fountain_link', 'https://fountain.fm/show/ApiShowId0000000001' ) );
+$req = end( $GLOBALS['http_log'] );
+check( 'fountain reverse hits the content endpoint without redirects',
+	false !== strpos( $req[0], '/content/show:id:ApiShowId0000000001' ) && 0 === $req[1]['redirection'] );
+$n = count( $GLOBALS['http_log'] );
+call( $o, 'search_fountain_link', 'https://fountain.fm/show/ApiShowId0000000001' );
+check( 'fountain reverse result remembered', count( $GLOBALS['http_log'] ) === $n );
+
+// Episode: parent._guid is the show guid; hit.links is the fallback.
+$GLOBALS['http_mock']['content/episode:id:ApiEpId000000000001'] = array( 'code' => 200, 'body' => json_encode( array(
+	'hit'    => array( '_id' => 'ApiEpId000000000001', '_guid' => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', '_type' => 'EPISODE' ),
+	'parent' => array( '_id' => 'ApiShowId0000000001', '_guid' => '99999999-8888-7777-6666-555555555555', '_type' => 'SHOW' ),
+) ) );
+check( 'fountain search episode via content API',
+	array( 'ref' => '99999999-8888-7777-6666-555555555555', 'episode' => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' ) === call( $o, 'search_fountain_link', 'https://fountain.fm/episode/ApiEpId000000000001' ) );
+
+$GLOBALS['http_mock']['content/episode:id:LinkEpId00000000001'] = array( 'code' => 200, 'body' => json_encode( array(
+	'hit' => array(
+		'_id'   => 'LinkEpId00000000001',
+		'_guid' => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+		'_type' => 'EPISODE',
+		'links' => array( 'show:id:whatever', 'show:guid:77777777-6666-5555-4444-333333333333' ),
+	),
+) ) );
+check( 'fountain search episode show-guid falls back to links',
+	array( 'ref' => '77777777-6666-5555-4444-333333333333', 'episode' => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' ) === call( $o, 'search_fountain_link', 'https://fountain.fm/episode/LinkEpId00000000001' ) );
+
+// 404 = definitive miss (remembered), surfaced as empty results.
+$GLOBALS['http_mock']['content/show:id:MissingId00000000001'] = array( 'code' => 404, 'body' => '' );
+check( 'fountain search 404 -> empty results', array() === call( $o, 'search_fountain_link', 'https://fountain.fm/show/MissingId00000000001' ) );
+$n = count( $GLOBALS['http_log'] );
+call( $o, 'search_fountain_link', 'https://fountain.fm/show/MissingId00000000001' );
+check( 'fountain search miss remembered', count( $GLOBALS['http_log'] ) === $n );
+
+// 5xx = unreliable (false -> 502), remembered only briefly, never as a miss.
+$GLOBALS['http_mock']['content/show:id:FlakyId0000000000001'] = array( 'code' => 503, 'body' => '' );
+check( 'fountain search 503 -> unreliable', false === call( $o, 'search_fountain_link', 'https://fountain.fm/show/FlakyId0000000000001' ) );
+$n = count( $GLOBALS['http_log'] );
+check( 'fountain search unreliable remembered briefly', false === call( $o, 'search_fountain_link', 'https://fountain.fm/show/FlakyId0000000000001' ) && count( $GLOBALS['http_log'] ) === $n );
+
+// A readable hit without usable guids is a miss; a wrong type proves nothing.
+$GLOBALS['http_mock']['content/show:id:NoGuidId00000000001'] = array( 'code' => 200, 'body' => json_encode( array(
+	'hit' => array( '_id' => 'NoGuidId00000000001', '_guid' => '', '_type' => 'SHOW' ),
+) ) );
+check( 'fountain search hit without guid -> empty results', array() === call( $o, 'search_fountain_link', 'https://fountain.fm/show/NoGuidId00000000001' ) );
+$GLOBALS['http_mock']['content/show:id:WrongTypeId000000001'] = array( 'code' => 200, 'body' => json_encode( array(
+	'hit' => array( '_id' => 'WrongTypeId000000001', '_guid' => '11111111-2222-3333-4444-555555555555', '_type' => 'EPISODE' ),
+) ) );
+check( 'fountain search wrong type -> unreliable', false === call( $o, 'search_fountain_link', 'https://fountain.fm/show/WrongTypeId000000001' ) );
+
+// ajax_search wiring: a direct payload short-circuits the byterm search.
+function p20_catch_json( $o ) {
+	try {
+		$o->ajax_search();
+	} catch ( P20_Json_Response $r ) {
+		return $r;
+	}
+	return null;
+}
+$_POST = array( 'type' => 'shows', 'q' => 'https://fountain.fm/show/ApiShowId0000000001' );
+$r = p20_catch_json( $o );
+check( 'ajax fountain show -> direct payload',
+	$r && $r->ok && isset( $r->payload['direct']['ref'] )
+	&& '11111111-2222-3333-4444-555555555555' === $r->payload['direct']['ref']
+	&& '' === $r->payload['direct']['episode'] );
+$_POST = array( 'type' => 'shows', 'q' => 'https://fountain.fm/show/MissingId00000000001' );
+$r = p20_catch_json( $o );
+check( 'ajax fountain miss -> empty shows',
+	$r && $r->ok && isset( $r->payload['shows'] ) && array() === $r->payload['shows'] && ! isset( $r->payload['direct'] ) );
+$_POST = array( 'type' => 'shows', 'q' => 'plain title' );
+$GLOBALS['http_mock']['search/byterm'] = array( 'code' => 200, 'body' => json_encode( array(
+	'feeds' => array( array( 'id' => 75075, 'title' => 'S', 'author' => 'A', 'podcastGuid' => 'g' ) ),
+) ) );
+$r = p20_catch_json( $o );
+check( 'ajax plain query still uses byterm search',
+	$r && $r->ok && isset( $r->payload['shows'][0]['ref'] ) && 'g' === $r->payload['shows'][0]['ref'] );
+$_POST = array();
+$GLOBALS['http_mock'] = array();
 
 echo "\n$pass passed, $fail failed\n";
 exit( $fail ? 1 : 0 );

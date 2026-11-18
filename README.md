@@ -49,7 +49,7 @@ Fountain's public URLs use **opaque Fountain ids**, not Podcast Index ids - the 
 
 ## Features
 
-- Search UI: search shows, then link to the whole show or pick one of its 25 latest episodes
+- Search UI: search shows, then link to the whole show or pick one of its 25 latest episodes; paste a Fountain share link (`fountain.fm/show/...` or `fountain.fm/episode/...`) to jump straight to that page
 - `?show=` / `?episode=` URL mode and inline shortcode attributes (attributes win)
 - Per-app controls: enable, order, icon URL (with a live preview of the icon the buttons will use), icon background; optional random order
 - Cache table with stale-while-revalidate refresh (default 12 h, configurable), plus short negative caching for misses and a 30-day derived Fountain URL per row
@@ -83,6 +83,7 @@ Verified live on 2026-11-16 (agent):
 
 - Podverse's url-resolver endpoint: `GET api.podverse.fm/api/v1/url-resolver/episode?podcastIndexId={PI feed id}&episodeGuid={guid}` returns `{"webUrl":"https://podverse.fm/episode/{id}"}` (200) or `{"message":"Episode not found"}` (404); the show resolver returns the `podverse.fm/podcast/{id}` redirect target
 - CurioCaster's client route list: only `/`, `/fn`, `/podcast` and `/podcast/[podcastid]` - no episode route exists
+- Fountain's content endpoint as the reverse of the guid lookup: `GET api.fountain.fm/v1/content/{show|episode}:id:{Fountain id}` returns `hit._guid` plus, for episodes, the show guid in `parent._guid` / `links` (200; 404 for unknown ids); round-tripped back through `POST /search/lookup` with the example show/episode ids from a real share link
 
 Not yet verified live - confirmed only against the documentation:
 
