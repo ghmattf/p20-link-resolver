@@ -6,10 +6,10 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 ## Open
 
 ### 1. Direct input in the search box (feed URL, Apple id, podcast guid)
-- **Status:** Open
-- **What:** the search box only does a title search (`search/byterm`). People often have a feed URL or an Apple Podcasts id instead.
-- **Where:** `ajax_search()`, `inline_js()` search handler.
-- **Plan:** detect a URL (`podcasts/byfeedurl`), an `id123456` / numeric Apple id (`podcasts/byitunesid`) or a UUID (`podcasts/byguid`) and jump straight to the result.
+- **Status:** Open (Fountain share links shipped 2026-11-16, pending release; the rest below still open)
+- **What:** the search box only does a title search (`search/byterm`). People often have a feed URL or an Apple Podcasts id instead. **Done so far:** a pasted Fountain share link (`fountain.fm/show/...` or `fountain.fm/episode/...`, any scheme/www/query-string variant) is recognised, matched against the cache row's remembered `fountain_url` first, then reverse-resolved through `GET api.fountain.fm/v1/content/{type}:id:{id}` (guids cached in `p20l_frv_*`), and the UI jumps straight to `?show=&episode=`.
+- **Where:** `ajax_search()`, `search_fountain_link()` / `fountain_reverse()` / `cache_row_by_fountain_url()`, `inline_js()` search handler.
+- **Plan:** detect a feed URL (`podcasts/byfeedurl`), an `id123456` / numeric Apple id (`podcasts/byitunesid`) or a UUID (`podcasts/byguid`) and jump straight to the result, following the same null / direct / miss shape.
 
 ### 2. Podverse episode links - pending release
 - **Status:** Open (implemented 2026-11-16, not yet released - remove this item when it ships)
