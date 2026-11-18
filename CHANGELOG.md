@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.10] - 2026-11-18
+
+- Podverse episode links: an episode request now opens the episode on Podverse when possible. The Podverse id is resolved from the Podcast Index feed id + episode guid through Podverse's public url-resolver (`GET api.podverse.fm/api/v1/url-resolver/episode`, live-verified 2026-11-16) and cached; a miss or lookup failure still opens the show as before.
+- Search: paste a Fountain share link (`fountain.fm/show/...` or `fountain.fm/episode/...`) into the search box and jump straight to that page. The link is matched against the cache row's remembered Fountain URL first (no upstream call), then reverse-resolved to guids through Fountain's content API (`GET api.fountain.fm/v1/content/{type}:id:{id}`, live-verified 2026-11-16); results are cached, a dead link shows "no results".
+
 ## [0.1.9] - 2026-11-16
 
 - New target app: Podcast Guru (`app.podcastguru.io/podcast/{Apple id}`) - show links keyed on the Apple Podcasts id; an episode request opens the show, since episode URLs need Podcast Guru's internal id. Pattern from the platform-links guide, not yet verified live.
