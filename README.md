@@ -49,7 +49,7 @@ Fountain's public URLs use **opaque Fountain ids**, not Podcast Index ids - the 
 
 ## Features
 
-- Search UI: search shows, then link to the whole show or pick one of its 25 latest episodes; paste a Fountain share link (`fountain.fm/show/...` or `fountain.fm/episode/...`) to jump straight to that page
+- Search UI: search shows, then link to the whole show or pick one of its 25 latest episodes; paste a share link (Fountain, CurioCaster, Podcast Index, Castamatic, TrueFans, BoostMeBuddy, Podfriend, Podcast Guru or Podverse) to jump straight to that page
 - `?show=` / `?episode=` URL mode and inline shortcode attributes (attributes win)
 - Per-app controls: enable, order, icon URL (with a live preview of the icon the buttons will use), icon background; optional random order
 - Cache table with stale-while-revalidate refresh (default 12 h, configurable), plus short negative caching for misses and a 30-day derived Fountain URL per row
@@ -85,8 +85,13 @@ Verified live on 2026-11-16 (agent):
 - CurioCaster's client route list: only `/`, `/fn`, `/podcast` and `/podcast/[podcastid]` - no episode route exists
 - Fountain's content endpoint as the reverse of the guid lookup: `GET api.fountain.fm/v1/content/{show|episode}:id:{Fountain id}` returns `hit._guid` plus, for episodes, the show guid in `parent._guid` / `links` (200; 404 for unknown ids); round-tripped back through `POST /search/lookup` with the example show/episode ids from a real share link
 
+Verified live on 2026-11-18 (agent):
+
+- Podverse's reverse lookups for pasted share links: `GET api.podverse.fm/api/v1/podcast/{web id}` returns `podcastGuid` and `podcastIndexId` at the top level, `GET api.podverse.fm/api/v1/episode/{web id}` returns the RSS `guid` plus the parent `podcast.podcastGuid` / `podcast.podcastIndexId` (200; 404 for unknown ids)
+
 Not yet verified live - confirmed only against the documentation:
 
 - The Podcast Guru pattern (added 2026-11-16; from the platform-links guide)
+- The Podcast Index `podcasts/byitunesid` endpoint (from the API's OpenAPI spec on the `master` branch; the agent sandbox has no API credentials) - it powers the Apple-id keyed Podfriend and Podcast Guru pasted-link search
 
 Override any app icon in settings if one doesn't load.

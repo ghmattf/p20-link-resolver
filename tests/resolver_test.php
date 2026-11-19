@@ -704,5 +704,89 @@ check( 'ajax plain query still uses byterm search',
 $_POST = array();
 $GLOBALS['http_mock'] = array();
 
+// --- direct search: the other target apps' share URLs (README app table) ---
+// Guid/feed-id-carrying apps resolve with no HTTP at all.
+$n = count( $GLOBALS['http_log'] );
+check( 'search curiocaster share link', array( 'ref' => '75075', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://curiocaster.com/podcast/pi75075' ) );
+check( 'search podcastindex share link (guid)', array( 'ref' => 'b2d9f1a0-1111-2222-3333-444455556666', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://podcastindex.org/podcast/b2d9f1a0-1111-2222-3333-444455556666' ) );
+check( 'search podcastindex share link (feed id, schemeless)', array( 'ref' => '75075', 'episode' => '' ) === call( $o, 'search_direct_link', 'podcastindex.org/podcast/75075' ) );
+check( 'search castamatic share link', array( 'ref' => 'g', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://castamatic.com/guid/g' ) );
+check( 'search truefans share link (query string ignored)', array( 'ref' => 'g', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://truefans.fm/g?utm_source=share' ) );
+check( 'search api.podverse.fm show link', array( 'ref' => '75075', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://api.podverse.fm/api/v1/podcast/podcastindex/75075' ) );
+check( 'search boostmebuddy link with episode', array( 'ref' => 'g', 'episode' => 'PC2084/a b' ) === call( $o, 'search_direct_link', 'https://www.boostmebuddy.com/?podcast=g&episode=PC2084%2Fa%20b' ) );
+check( 'search boostmebuddy show-only link', array( 'ref' => 'g', 'episode' => '' ) === call( $o, 'search_direct_link', 'boostmebuddy.com/?podcast=g' ) );
+check( 'search boostmebuddy without podcast param ignored', null === call( $o, 'search_direct_link', 'https://boostmebuddy.com/?other=1' ) );
+check( 'guid/feed-id share links need no HTTP', count( $GLOBALS['http_log'] ) === $n );
+check( 'search dispatcher still handles fountain links', array( 'ref' => '11111111-2222-3333-4444-555555555555', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://fountain.fm/show/ApiShowId0000000001' ) );
+
+// Apple-id keyed links (Podfriend, Podcast Guru) need one PI byitunesid
+// call, then remember the mapping.
+$GLOBALS['http_mock']['podcasts/byitunesid'] = array( 'code' => 200, 'body' => json_encode( array( 'feed' => array( 'id' => 1234, 'podcastGuid' => 'appleshowguid-001' ) ) ) );
+$n = count( $GLOBALS['http_log'] );
+check( 'search podfriend show link via apple id', array( 'ref' => 'appleshowguid-001', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://podfriend.com/podcast/1234' ) );
+check( 'search podfriend episode link keeps guid', array( 'ref' => 'appleshowguid-001', 'episode' => 'PC2084/a b' ) === call( $o, 'search_direct_link', 'https://podfriend.com/podcast/1234/PC2084%2Fa%20b' ) );
+check( 'search podcastguru share link via apple id', array( 'ref' => 'appleshowguid-001', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://app.podcastguru.io/podcast/1234' ) );
+check( 'apple id resolved with one PI call and remembered', count( $GLOBALS['http_log'] ) === $n + 1 );
+$GLOBALS['http_mock']['podcasts/byitunesid'] = array( 'code' => 200, 'body' => json_encode( array( 'feed' => null ) ) );
+check( 'search unknown apple id -> empty results', array() === call( $o, 'search_direct_link', 'https://podfriend.com/podcast/999999999' ) );
+$n = count( $GLOBALS['http_log'] );
+call( $o, 'search_direct_link', 'https://podfriend.com/podcast/999999999' );
+check( 'apple id miss remembered', count( $GLOBALS['http_log'] ) === $n );
+$GLOBALS['http_mock']['podcasts/byitunesid'] = array( 'code' => 500, 'body' => '' );
+check( 'search apple id 500 -> unreliable', false === call( $o, 'search_direct_link', 'https://app.podcastguru.io/podcast/555555555' ) );
+
+// Podverse web ids reverse through Podverse's own API (live-verified
+// 2026-11-18): podcast -> podcastGuid, episode -> RSS guid + parent.
+$GLOBALS['http_mock']['api.podverse.fm/api/v1/podcast/peLVTHMwlg'] = array( 'code' => 200, 'body' => json_encode( array(
+	'id'             => 'peLVTHMwlg',
+	'podcastIndexId' => '920666',
+	'podcastGuid'    => '917393e3-1b1e-5cef-ace4-edaa54e1f810',
+) ) );
+check( 'search podverse show link reversed', array( 'ref' => '917393e3-1b1e-5cef-ace4-edaa54e1f810', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://podverse.fm/podcast/peLVTHMwlg' ) );
+$pv_rev = end( $GLOBALS['http_log'] );
+check( 'podverse reverse hits its API without redirects',
+	false !== strpos( $pv_rev[0], '/api/v1/podcast/peLVTHMwlg' )
+	&& 0 === $pv_rev[1]['redirection'] );
+$n = count( $GLOBALS['http_log'] );
+call( $o, 'search_direct_link', 'https://podverse.fm/podcast/peLVTHMwlg' );
+check( 'podverse show reverse remembered', count( $GLOBALS['http_log'] ) === $n );
+$GLOBALS['http_mock']['api.podverse.fm/api/v1/episode/8kDmgoJKa'] = array( 'code' => 200, 'body' => json_encode( array(
+	'guid'    => 'PC20-278',
+	'podcast' => array(
+		'id'             => 'peLVTHMwlg',
+		'podcastIndexId' => '920666',
+		'podcastGuid'    => '917393e3-1b1e-5cef-ace4-edaa54e1f810',
+	),
+) ) );
+check( 'search podverse episode link reversed', array( 'ref' => '917393e3-1b1e-5cef-ace4-edaa54e1f810', 'episode' => 'PC20-278' ) === call( $o, 'search_direct_link', 'https://podverse.fm/episode/8kDmgoJKa' ) );
+$GLOBALS['http_mock']['api.podverse.fm/api/v1/episode/PvNoGuidEpisode01'] = array( 'code' => 200, 'body' => json_encode( array(
+	'id'      => 'PvNoGuidEpisode01',
+	'podcast' => array( 'podcastIndexId' => '920666' ),
+) ) );
+check( 'search podverse episode without guid degrades to show', array( 'ref' => '920666', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://podverse.fm/episode/PvNoGuidEpisode01' ) );
+$GLOBALS['http_mock']['api.podverse.fm/api/v1/podcast/PvNoGuidShow01'] = array( 'code' => 200, 'body' => json_encode( array( 'id' => 'PvNoGuidShow01', 'name' => 'X' ) ) );
+check( 'search podverse show without usable guid -> empty results', array() === call( $o, 'search_direct_link', 'https://podverse.fm/podcast/PvNoGuidShow01' ) );
+$GLOBALS['http_mock']['api.podverse.fm/api/v1/podcast/PvMissing0000001'] = array( 'code' => 404, 'body' => '' );
+check( 'search podverse unknown show -> empty results', array() === call( $o, 'search_direct_link', 'https://podverse.fm/podcast/PvMissing0000001' ) );
+$n = count( $GLOBALS['http_log'] );
+call( $o, 'search_direct_link', 'https://podverse.fm/podcast/PvMissing0000001' );
+check( 'podverse reverse miss remembered', count( $GLOBALS['http_log'] ) === $n );
+$GLOBALS['http_mock']['api.podverse.fm/api/v1/podcast/PvFlaky00000001'] = array( 'code' => 500, 'body' => '' );
+check( 'search podverse 500 -> unreliable', false === call( $o, 'search_direct_link', 'https://podverse.fm/podcast/PvFlaky00000001' ) );
+
+// Anything else still falls through to the byterm search.
+check( 'search ignores unknown hosts', null === call( $o, 'search_direct_link', 'https://example.com/show/1' ) );
+check( 'search ignores non-share paths', null === call( $o, 'search_direct_link', 'https://castamatic.com/about' ) );
+check( 'search ignores bare truefans domain', null === call( $o, 'search_direct_link', 'truefans.fm' ) );
+check( 'search ignores plain titles', null === call( $o, 'search_direct_link', 'some podcast' ) );
+
+// ajax_search wiring: an app share link jumps just like a Fountain one.
+$_POST = array( 'type' => 'shows', 'q' => 'https://curiocaster.com/podcast/pi75075' );
+$r = p20_catch_json( $o );
+check( 'ajax app share link -> direct payload',
+	$r && $r->ok && isset( $r->payload['direct']['ref'] ) && '75075' === $r->payload['direct']['ref'] );
+$_POST = array();
+$GLOBALS['http_mock'] = array();
+
 echo "\n$pass passed, $fail failed\n";
 exit( $fail ? 1 : 0 );

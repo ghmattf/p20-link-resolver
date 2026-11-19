@@ -70,6 +70,8 @@ class P20_Link_Resolver {
 	const PODVERSE_API        = 'https://api.podverse.fm/api/v1';
 	const PODVERSE_HIT_TTL    = 30 * DAY_IN_SECONDS; // Podverse episode URLs are stable.
 	const PODVERSE_FAIL_TTL   = HOUR_IN_SECONDS;     // Definitive Podverse misses (PI neg_ttl policy).
+	const DIRECT_HIT_TTL      = 30 * DAY_IN_SECONDS; // Direct-input lookups (Apple id, Podverse web ids) are stable.
+	const DIRECT_SCHEMA       = 1;        // Bump to invalidate remembered direct-input lookups.
 
 	/** HTTP status of the last Podcast Index call (0 = transport/undecodable). */
 	private $last_status = 0;
@@ -670,6 +672,260 @@ class P20_Link_Resolver {
 		global $wpdb;
 		$table = $this->cache_table();
 		return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE fountain_url = %s LIMIT 1", (string) $url ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+	}
+
+	/**
+	 * Any recognised share link -> direct payload: Fountain first, then
+	 * the other target apps' URL shapes (search_app_link()). Same contract
+	 * as search_fountain_link() throughout: null / array() / false.
+	 */
+	private function search_direct_link( $q ) {
+		$link = $this->search_fountain_link( $q );
+		if ( null !== $link ) {
+			return $link;
+		}
+		return $this->search_app_link( $q );
+	}
+
+	/**
+	 * Resolve another target app's share URL (the README app table) into
+	 * array('ref' => …, 'episode' => …). Show links carrying a
+	 * podcast:guid or PI feed id resolve with no HTTP at all; the
+	 * Apple-id keyed apps (Podfriend, Podcast Guru) need one PI
+	 * byitunesid call; Podverse web ids need one reverse lookup on
+	 * Podverse's own API (verified live 2026-11-18).
+	 *
+	 * Contract as search_fountain_link(): null when $q is not one of
+	 * these URLs, array() for a definitive miss, false for unreliable.
+	 */
+	private function search_app_link( $q ) {
+		$q = trim( (string) $q );
+		if ( ! preg_match( '~^[A-Za-z][A-Za-z0-9+.\-]*://~', $q ) ) {
+			$q = 'https://' . $q; // Bare domain pastes still parse.
+		}
+		$parts = parse_url( $q );
+		if ( ! is_array( $parts ) || empty( $parts['host'] ) ) {
+			return null;
+		}
+		$host = strtolower( preg_replace( '/^www\./i', '', (string) $parts['host'] ) );
+		$path = isset( $parts['path'] ) ? (string) $parts['path'] : '';
+		$query = array();
+		if ( ! empty( $parts['query'] ) ) {
+			parse_str( $parts['query'], $query );
+		}
+
+		switch ( $host ) {
+			case 'curiocaster.com':
+				// curiocaster.com/podcast/pi{PI feed id}
+				if ( ! preg_match( '#^/podcast/pi(\d{1,12})/?$#', $path, $m ) ) {
+					return null;
+				}
+				return array( 'ref' => $m[1], 'episode' => '' );
+
+			case 'podcastindex.org':
+				// podcastindex.org/podcast/{podcast:guid or PI feed id}
+				if ( ! preg_match( '#^/podcast/([A-Za-z0-9\-]{1,64})/?$#', $path, $m ) ) {
+					return null;
+				}
+				$ref = $this->guard_show( $m[1] );
+				return '' !== $ref ? array( 'ref' => $ref, 'episode' => '' ) : array();
+
+			case 'castamatic.com':
+				// castamatic.com/guid/{podcast:guid}
+				if ( ! preg_match( '#^/guid/([A-Za-z0-9\-]{1,64})/?$#', $path, $m ) ) {
+					return null;
+				}
+				$ref = $this->guard_show( $m[1] );
+				return '' !== $ref ? array( 'ref' => $ref, 'episode' => '' ) : array();
+
+			case 'truefans.fm':
+				// truefans.fm/{podcast:guid}
+				if ( ! preg_match( '#^/([A-Za-z0-9\-]{1,64})/?$#', $path, $m ) ) {
+					return null;
+				}
+				$ref = $this->guard_show( $m[1] );
+				return '' !== $ref ? array( 'ref' => $ref, 'episode' => '' ) : array();
+
+			case 'boostmebuddy.com':
+				// www.boostmebuddy.com/?podcast={guid}[&episode={guid}]
+				if ( '' !== $path && '/' !== $path ) {
+					return null;
+				}
+				if ( ! array_key_exists( 'podcast', $query ) ) {
+					return null;
+				}
+				$raw_podcast = is_scalar( $query['podcast'] ) ? (string) $query['podcast'] : '';
+				$ref         = $this->guard_show( $raw_podcast );
+				if ( '' === $ref ) {
+					return array();
+				}
+				$raw_episode = ( isset( $query['episode'] ) && is_scalar( $query['episode'] ) ) ? (string) $query['episode'] : '';
+				return array( 'ref' => $ref, 'episode' => '' !== $raw_episode ? $this->guard_episode( $raw_episode ) : '' );
+
+			case 'podfriend.com':
+				// podfriend.com/podcast/{Apple id}[/{encoded episode guid}]
+				if ( ! preg_match( '~^/podcast/(\d{1,12})(?:/([^/?#]+))?/?$~', $path, $m ) ) {
+					return null;
+				}
+				$ep  = isset( $m[2] ) && '' !== $m[2] ? $this->guard_episode( rawurldecode( $m[2] ) ) : '';
+				$ref = $this->apple_ref( $m[1] );
+				if ( null === $ref ) {
+					return false;
+				}
+				return '' !== $ref ? array( 'ref' => $ref, 'episode' => $ep ) : array();
+
+			case 'app.podcastguru.io':
+				// app.podcastguru.io/podcast/{Apple id}
+				if ( ! preg_match( '#^/podcast/(\d{1,12})/?$#', $path, $m ) ) {
+					return null;
+				}
+				$ref = $this->apple_ref( $m[1] );
+				if ( null === $ref ) {
+					return false;
+				}
+				return '' !== $ref ? array( 'ref' => $ref, 'episode' => '' ) : array();
+
+			case 'podverse.fm':
+				// podverse.fm/podcast|episode/{Podverse web id} - reversed
+				// through Podverse's own API (podverse_reverse_ref()).
+				if ( preg_match( '#^/podcast/([A-Za-z0-9_\-]{1,64})/?$#', $path, $m ) ) {
+					return $this->podverse_reverse_ref( 'podcast', $m[1] );
+				}
+				if ( preg_match( '#^/episode/([A-Za-z0-9_\-]{1,64})/?$#', $path, $m ) ) {
+					return $this->podverse_reverse_ref( 'episode', $m[1] );
+				}
+				return null;
+
+			case 'api.podverse.fm':
+				// The show pattern our own links emit: PI feed id in the path.
+				if ( ! preg_match( '#^/api/v1/podcast/podcastindex/(\d{1,12})/?$#', $path, $m ) ) {
+					return null;
+				}
+				return array( 'ref' => $m[1], 'episode' => '' );
+		}
+		return null;
+	}
+
+	/**
+	 * PI feed reference (podcast:guid, else feed id) for an Apple
+	 * Podcasts id - the key Podfriend and Podcast Guru links are built
+	 * on. Returns the ref, '' for a definitive miss (PI doesn't know the
+	 * id) or null for an unreliable answer; remembered in p20l_aid_*
+	 * transients like the other direct-input lookups.
+	 */
+	private function apple_ref( $apple_id ) {
+		$apple_id = preg_replace( '/\D/', '', (string) $apple_id );
+		if ( '' === $apple_id ) {
+			return '';
+		}
+		$key    = 'p20l_aid_' . self::DIRECT_SCHEMA . '_' . md5( $apple_id );
+		$cached = get_transient( $key );
+		if ( false !== $cached ) {
+			return '~' === $cached ? null : (string) $cached;
+		}
+		$body = $this->api_get( '/podcasts/byitunesid', array( 'id' => $apple_id ) );
+		if ( ! is_array( $body ) ) {
+			// Transport / 5xx / undecodable: remember briefly, never as a miss.
+			set_transient( $key, '~', $this->neg_ttl() );
+			return null;
+		}
+		$feed = isset( $body['feed'] ) && is_array( $body['feed'] ) ? $body['feed'] : array();
+		if ( empty( $feed['id'] ) ) {
+			set_transient( $key, '', $this->neg_ttl() ); // 200 without a feed: definitive.
+			return '';
+		}
+		$ref = ! empty( $feed['podcastGuid'] ) ? $this->guard_show( $feed['podcastGuid'] ) : '';
+		if ( '' === $ref ) {
+			$ref = $this->guard_show( (string) (int) $feed['id'] );
+		}
+		set_transient( $key, $ref, self::DIRECT_HIT_TTL );
+		return $ref;
+	}
+
+	/**
+	 * One GET to Podverse's own API for the guids behind a podverse.fm
+	 * share URL (verified live 2026-11-18): /podcast/{id} -> podcastGuid
+	 * (or podcastIndexId), /episode/{id} -> RSS guid + the parent
+	 * podcastGuid. Contract as search_fountain_link(); remembered in
+	 * p20l_pvr_* transients. An episode that resolves but carries no
+	 * usable guid degrades to its show rather than to nothing.
+	 */
+	private function podverse_reverse_ref( $kind, $pv_id ) {
+		$key    = 'p20l_pvr_' . self::DIRECT_SCHEMA . '_' . md5( $kind . '|' . $pv_id );
+		$cached = get_transient( $key );
+		if ( false !== $cached ) {
+			if ( '~' === $cached ) {
+				return false;
+			}
+			if ( '' === $cached ) {
+				return array();
+			}
+			return is_array( $cached ) ? $cached : array();
+		}
+
+		// redirection => 0: never follow a remote redirect (SSRF hardening).
+		$response = wp_remote_get( self::PODVERSE_API . '/' . ( 'episode' === $kind ? 'episode' : 'podcast' ) . '/' . rawurlencode( $pv_id ), array(
+			'timeout'     => 8,
+			'redirection' => 0,
+			'headers'     => array(
+				'Accept'     => 'application/json',
+				'User-Agent' => 'P20LinkResolver/' . self::VERSION . ' (' . home_url() . ')',
+			),
+		) );
+
+		if ( is_wp_error( $response ) ) {
+			$this->podverse_status = 0;
+			set_transient( $key, '~', self::SOFT_FAIL_TTL );
+			return false;
+		}
+		$this->podverse_status = (int) wp_remote_retrieve_response_code( $response );
+		if ( 404 === $this->podverse_status ) { // Podverse doesn't know it.
+			set_transient( $key, '', $this->podverse_ttl() );
+			return array();
+		}
+		if ( 200 !== $this->podverse_status ) {
+			set_transient( $key, '~', self::SOFT_FAIL_TTL );
+			return false;
+		}
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $body ) ) {
+			$this->podverse_status = 0; // An undecodable 200 proves nothing.
+			set_transient( $key, '~', self::SOFT_FAIL_TTL );
+			return false;
+		}
+
+		// The show response is the podcast object itself; the episode
+		// response nests it under 'podcast'.
+		$parent = 'episode' === $kind
+			? ( isset( $body['podcast'] ) && is_array( $body['podcast'] ) ? $body['podcast'] : array() )
+			: $body;
+		$ref    = ! empty( $parent['podcastGuid'] ) ? $this->guard_show( $parent['podcastGuid'] ) : '';
+		if ( '' === $ref ) {
+			$pid = isset( $parent['podcastIndexId'] ) ? trim( (string) $parent['podcastIndexId'] ) : '';
+			if ( '' !== $pid && '0' !== $pid ) {
+				$ref = $this->guard_show( $pid );
+			}
+		}
+		if ( 'episode' === $kind ) {
+			$ep = ! empty( $body['guid'] ) ? $this->guard_episode( $body['guid'] ) : '';
+			if ( '' !== $ep && '' !== $ref ) {
+				$found = array( 'ref' => $ref, 'episode' => $ep );
+				set_transient( $key, $found, self::DIRECT_HIT_TTL );
+				return $found;
+			}
+			if ( '' !== $ref ) { // Readable payload without a usable guid: open the show.
+				$found = array( 'ref' => $ref, 'episode' => '' );
+				set_transient( $key, $found, self::DIRECT_HIT_TTL );
+				return $found;
+			}
+		} elseif ( '' !== $ref ) {
+			$found = array( 'ref' => $ref, 'episode' => '' );
+			set_transient( $key, $found, self::DIRECT_HIT_TTL );
+			return $found;
+		}
+		// Readable payload but nothing usable: definitive, remember as a miss.
+		set_transient( $key, '', self::PODVERSE_FAIL_TTL );
+		return array();
 	}
 
 	/**
@@ -1469,19 +1725,19 @@ class P20_Link_Resolver {
 			wp_send_json_error( array( 'message' => 'bad query' ), 400 );
 		}
 
-		// A pasted Fountain share link resolves to guids and jumps straight
-		// to that page: remembered cache-row URL first, then Fountain's
-		// content API. Checked before the length cap so long share URLs
-		// (utm params etc.) still work.
-		$fountain = $this->search_fountain_link( $q );
-		if ( null !== $fountain ) {
-			if ( false === $fountain ) {
-				wp_send_json_error( array( 'message' => 'fountain' ), 502 );
+		// A pasted share link (Fountain first, then the other target apps'
+		// URL shapes) resolves to guids and jumps straight to that page.
+		// Checked before the length cap so long share URLs (utm params
+		// etc.) still work.
+		$direct = $this->search_direct_link( $q );
+		if ( null !== $direct ) {
+			if ( false === $direct ) {
+				wp_send_json_error( array( 'message' => 'upstream' ), 502 );
 			}
-			if ( array() === $fountain ) {
+			if ( array() === $direct ) {
 				wp_send_json_success( array( 'shows' => array() ) );
 			}
-			wp_send_json_success( array( 'direct' => $fountain ) );
+			wp_send_json_success( array( 'direct' => $direct ) );
 		}
 
 		if ( mb_strlen( $q ) > 100 ) {
