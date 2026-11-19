@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.11] - 2026-11-18
+
+- Search: paste a share link for any target app - CurioCaster, Podcast Index, Castamatic, TrueFans, BoostMeBuddy, Podverse or the Apple-id keyed Podfriend and Podcast Guru - and jump straight to that show (or episode where the link carries one). Guid/feed-id links resolve with no upstream call, Apple-id links need one Podcast Index lookup, and Podverse web ids reverse through Podverse's own API (live-verified 2026-11-18); results are cached, a dead link shows "no results".
+
 ## [0.1.10] - 2026-11-18
 
 - Podverse episode links: an episode request now opens the episode on Podverse when possible. The Podverse id is resolved from the Podcast Index feed id + episode guid through Podverse's public url-resolver (`GET api.podverse.fm/api/v1/url-resolver/episode`, live-verified 2026-11-16) and cached; a miss or lookup failure still opens the show as before.
