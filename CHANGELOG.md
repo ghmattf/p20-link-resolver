@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.11] - 2026-11-18
+## [0.1.11] - 2026-11-20
 
 - Search: paste a share link for any target app - CurioCaster, Podcast Index, Castamatic, TrueFans, BoostMeBuddy, Podverse or the Apple-id keyed Podfriend and Podcast Guru - and jump straight to that show (or episode where the link carries one). Guid/feed-id links resolve with no upstream call, Apple-id links need one Podcast Index lookup, and Podverse web ids reverse through Podverse's own API (live-verified 2026-11-18); results are cached, a dead link shows "no results".
 
