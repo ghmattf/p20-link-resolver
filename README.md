@@ -77,7 +77,7 @@ Verified live on 2026-11-16 (tested by Matt):
 
 - The CurioCaster, Podverse, Podfriend, Castamatic, TrueFans and Podcast Index URL patterns (from the platform-links guide)
 - The Podcast Index response field names (`feed.id`, `feed.podcastGuid`, `feed.itunesId`, `episode.id`, `items[]`, `feeds[]`)
-- The default favicons at `https://{domain}/favicon.ico`
+- The default favicons at `https://{domain}/favicon.ico` (the three exceptions found on 2026-11-20 are listed below)
 
 Verified live on 2026-11-16 (agent):
 
@@ -94,6 +94,7 @@ Verified live on 2026-11-20 (agent):
 - TrueFans' hotlink protection: every `truefans.fm` asset (favicon, `/images/*`, even `www.`) returns 403 to a cross-site `Referer` (Cloudflare error 1011), so the button icon uses DuckDuckGo's icon mirror `icons.duckduckgo.com/ip3/truefans.fm.ico`, which serves the byte-identical favicon with or without a referer
 - Podfriend's current URL space: `/podcast/{PI feed id}` is 200 (301 to the slug-canonical), `/podcast/{podcast:guid}` is 200, the guide's Apple-id route is 410 Gone, and `/podcast/{base}/{episode guid}` 404s on every base - episode links open the show
 - Podcast Guru's addressing: `/podcast/{appleID}` is 301 to `/podcast/{slug}-{md5(feed URL)}` (200), the bare `md5(feed URL)` id renders directly, and `podcast:guid` / `pi{id}` forms 404
+- Default icon URLs (200 with a cross-site `Referer`): `podfriend.com/favicon.ico` and `app.podcastguru.io/favicon.ico` are 404 (Podfriend's real icons are `favicon.svg` / `favicon-32.png` / `favicon-192.png`, Podcast Guru's are under `/favicons/`), and `podcastindex.org` answers **every** asset request with 403 ("don't scrape our website"), so those three apps carry explicit icons: Podfriend `favicon-192.png`, Podcast Guru `favicons/android-icon-192x192.png`, Podcast Index the DuckDuckGo mirror (same pattern as TrueFans). All three replacements confirmed to be the apps' own logos.
 
 Not yet verified live - confirmed only against the documentation:
 

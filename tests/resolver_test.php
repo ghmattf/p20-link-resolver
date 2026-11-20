@@ -193,6 +193,9 @@ check( 'podfriend omitted with no feed id or guid', null === call( $o, 'app_link
 $guidonly = $base; $guidonly['feed_id'] = 0;
 check( 'podfriend falls back to podcast guid', 'https://podfriend.com/podcast/g' === call( $o, 'app_link', 'podfriend', $guidonly )['url'] );
 check( 'truefans default icon bypasses hotlink protection', 'https://icons.duckduckgo.com/ip3/truefans.fm.ico' === call( $o, 'app_icon', 'truefans', call( $o, 'app_registry' )['truefans'] ) );
+check( 'podcastindex default icon bypasses the site-wide 403', 'https://icons.duckduckgo.com/ip3/podcastindex.org.ico' === call( $o, 'app_icon', 'podcastindex', call( $o, 'app_registry' )['podcastindex'] ) );
+check( 'podfriend default icon is the real favicon (no /favicon.ico)', 'https://podfriend.com/favicon-192.png' === call( $o, 'app_icon', 'podfriend', call( $o, 'app_registry' )['podfriend'] ) );
+check( 'podcastguru default icon is the real favicon (no /favicon.ico)', 'https://app.podcastguru.io/favicons/android-icon-192x192.png' === call( $o, 'app_icon', 'podcastguru', call( $o, 'app_registry' )['podcastguru'] ) );
 check( 'boostmebuddy show', 'https://www.boostmebuddy.com/?podcast=g' === call( $o, 'app_link', 'boostmebuddy', $base )['url'] );
 $noguid = $base; $noguid['podcast_guid'] = '';
 check( 'boostmebuddy omitted without podcast guid', null === call( $o, 'app_link', 'boostmebuddy', $noguid ) );
@@ -528,6 +531,7 @@ $st = ob_get_clean();
 check( 'settings: icon preview per app', 9 === substr_count( $st, 'p20link-icon-preview' ) );
 check( 'settings: default favicon preview', false !== strpos( $st, 'https://fountain.fm/favicon.ico' ) );
 check( 'settings: preview img is escaped', false !== strpos( $st, 'src="https://fountain.fm/favicon.ico"' ) );
+check( 'settings: icons without a /favicon.ico preview their override', false !== strpos( $st, 'https://icons.duckduckgo.com/ip3/podcastindex.org.ico' ) && false !== strpos( $st, 'https://podfriend.com/favicon-192.png' ) && false !== strpos( $st, 'https://app.podcastguru.io/favicons/android-icon-192x192.png' ) );
 $GLOBALS['opts']['p20link_apps']['fountain']['icon_url'] = 'https://example.test/custom.png';
 ob_start();
 call( $o, 'render_settings_tab' );

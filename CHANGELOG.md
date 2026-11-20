@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.13] - 2026-11-20
+
+- Icons: Podfriend, Podcast Guru and Podcast Index showed no icon on the Settings tab (their `https://{domain}/favicon.ico` default is 404, 404 and a site-wide 403 - live 2026-11-20). Each app now carries its real icon in the registry instead: Podfriend's `favicon-192.png`, Podcast Guru's `favicons/android-icon-192x192.png`, and a referer-safe mirror for Podcast Index. Applies to the settings previews and the buttons on link pages alike.
+
 ## [0.1.12] - 2026-11-20
 
 - Podfriend: the button now appears for every resolved show. Podfriend's guide-listed Apple-id route is gone (410, live 2026-11-20) - links are built on the Podcast Index feed id (or the `podcast:guid`), which Podfriend's site accepts (live 2026-11-20). Its episode URLs need Podfriend-internal ids (every `{base}/{episode guid}` form 404s), so an episode request opens the show.
