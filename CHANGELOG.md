@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.12] - 2026-11-20
+
+- Podfriend: the button now appears for every resolved show. Podfriend's guide-listed Apple-id route is gone (410, live 2026-11-20) - links are built on the Podcast Index feed id (or the `podcast:guid`), which Podfriend's site accepts (live 2026-11-20). Its episode URLs need Podfriend-internal ids (every `{base}/{episode guid}` form 404s), so an episode request opens the show.
+- Podcast Guru: shows listed only in the Podcast Index (no Apple id) now get a button too - the link falls back to the site's `md5(feed URL)` addressing (live 2026-11-20). This stores the feed URL on the cache row (new `feed_url` column); rows cached before this release pick it up on their next background refresh (12 h default).
+- TrueFans icon: `truefans.fm` refuses cross-site image requests (403), so the default icon is now a referer-safe mirror of the same favicon instead of a broken image.
+
 ## [0.1.11] - 2026-11-20
 
 - Search: paste a share link for any target app - CurioCaster, Podcast Index, Castamatic, TrueFans, BoostMeBuddy, Podverse or the Apple-id keyed Podfriend and Podcast Guru - and jump straight to that show (or episode where the link carries one). Guid/feed-id links resolve with no upstream call, Apple-id links need one Podcast Index lookup, and Podverse web ids reverse through Podverse's own API (live-verified 2026-11-18); results are cached, a dead link shows "no results".
