@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Usage: ./build-zip.sh
-# Builds dist/p20-link-resolver-<version>.zip for the GitHub release.
+# Builds dist/p20-link-resolver.zip for the GitHub release. The filename
+# carries no version - the release tag (vx.y.z) is what identifies the build.
 #
 # The zip MUST contain a single top-level "p20-link-resolver/" folder.
 # WordPress's installer (WP_Upgrader::install_package) takes the install
@@ -18,7 +19,7 @@ if [ -z "$VER" ]; then
 fi
 
 STAGE="dist/p20-link-resolver"
-ZIP="dist/p20-link-resolver-$VER.zip"
+ZIP="dist/p20-link-resolver.zip"
 
 rm -rf "$STAGE" "$ZIP"
 mkdir -p "$STAGE"
@@ -26,7 +27,7 @@ cp CHANGELOG.md LICENSE "$FILE" README.md "$STAGE/"
 
 # Zip from inside dist/ so every entry is "p20-link-resolver/<file>",
 # never "<file>" at the archive root.
-( cd dist && zip -q -r "p20-link-resolver-$VER.zip" p20-link-resolver )
+( cd dist && zip -q -r "p20-link-resolver.zip" p20-link-resolver )
 
 # Guard: fail loudly if any entry escaped the wrapper folder.
 if command -v unzip >/dev/null 2>&1; then
@@ -37,4 +38,4 @@ if command -v unzip >/dev/null 2>&1; then
 	fi
 fi
 
-echo "Built $ZIP"
+echo "Built $ZIP (plugin $VER)"
