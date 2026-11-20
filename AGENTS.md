@@ -114,4 +114,5 @@ harness doesn't stub yet, add the stub to the harness.
 
 - `.env*`: never read or report on these.
 - `dist/` and `*.zip`: build output, gitignored.
+- `.scratch/`: local probe downloads (icons, fetched HTML), gitignored - use it instead of `/tmp/` for throwaway files.
 - Don't add third-party libraries or a build step; the plugin is deliberately one dependency-free PHP file so it can be deployed by copying it.
