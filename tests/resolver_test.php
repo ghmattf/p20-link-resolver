@@ -212,6 +212,10 @@ check( 'podcastguru omitted without apple id or feed url', null === call( $o, 'a
 $gurl = $noapple; $gurl['feed_url'] = 'https://feeds.example.com/show.xml';
 check( 'podcastguru PI-only show uses md5(feed url)', 'https://app.podcastguru.io/podcast/' . md5( 'https://feeds.example.com/show.xml' ) === call( $o, 'app_link', 'podcastguru', $gurl )['url'] );
 
+$bf = $base; $bf['feed_url'] = 'https://feeds.example.com/show.xml';
+check( 'breez show (feed URL, encodeURIComponent parity)', 'https://breez.link/p?feedURL=https%3A%2F%2Ffeeds.example.com%2Fshow.xml' === call( $o, 'app_link', 'breez', $bf )['url'] );
+check( 'breez omitted without feed URL', null === call( $o, 'app_link', 'breez', $base ) );
+
 $ep = $base;
 $ep['episode_wanted'] = true; $ep['episode_guid'] = 'PC2084/a b'; $ep['pi_episode_id'] = 16795090;
 $l = call( $o, 'app_link', 'fountain', $ep );
@@ -220,6 +224,9 @@ $l = call( $o, 'app_link', 'podfriend', $ep );
 check( 'podfriend episode degrades to show (guide subpath is 404)', ! $l['episode'] && 'https://podfriend.com/podcast/75075' === $l['url'] );
 $l = call( $o, 'app_link', 'curiocaster', $ep );
 check( 'curiocaster episode degrades to show', ! $l['episode'] && 'https://curiocaster.com/podcast/pi75075' === $l['url'] );
+$be = $ep; $be['feed_url'] = 'https://feeds.example.com/show.xml';
+$l = call( $o, 'app_link', 'breez', $be );
+check( 'breez episode carries feed URL + episode guid', 'https://breez.link/p?feedURL=https%3A%2F%2Ffeeds.example.com%2Fshow.xml&episodeID=PC2084%2Fa%20b' === $l['url'] && $l['episode'] );
 
 // Podverse episode links resolve the Podverse id through the public
 // url-resolver (PI feed id + episode guid, live-verified 2026-11-16).
@@ -466,7 +473,7 @@ $GLOBALS['http_mock'] = array(
 );
 $GLOBALS['transients'] = array();
 $html = $o->render( array( 'show' => 'abc-guid', 'episode' => 'PC2084' ) );
-check( 'render: 9 app buttons', 9 === substr_count( $html, 'class="p20link-item ' ) );
+check( 'render: 10 app buttons', 10 === substr_count( $html, 'class="p20link-item ' ) );
 check( 'render: episode title shown', false !== strpos( $html, 'Ep 1' ) );
 check( 'render: fountain episode href', false !== strpos( $html, 'https://fountain.fm/episode/EpRender1' ) );
 check( 'render: degraded apps flagged', substr_count( $html, '(opens the show)' ) === 7 );
@@ -496,7 +503,7 @@ check( 'render header=false hides title', false === strpos( $html, 'p20link-titl
 // disabled app
 $GLOBALS['opts']['p20link_apps'] = array( 'fountain' => array( 'enabled' => false ) );
 $html = $o->render( array( 'show' => 'abc-guid' ) );
-check( 'disabled app hidden', false === strpos( $html, 'fountain.fm/show' ) && 8 === substr_count( $html, 'class="p20link-item ' ) );
+check( 'disabled app hidden', false === strpos( $html, 'fountain.fm/show' ) && 9 === substr_count( $html, 'class="p20link-item ' ) );
 
 // no show -> search UI; no creds -> message
 $html = $o->render( array() );
@@ -528,7 +535,7 @@ check( 'sanitize: unchecked app disabled', false === $clean['curiocaster']['enab
 ob_start();
 call( $o, 'render_settings_tab' );
 $st = ob_get_clean();
-check( 'settings: icon preview per app', 9 === substr_count( $st, 'p20link-icon-preview' ) );
+check( 'settings: icon preview per app', 10 === substr_count( $st, 'p20link-icon-preview' ) );
 check( 'settings: default favicon preview', false !== strpos( $st, 'https://fountain.fm/favicon.ico' ) );
 check( 'settings: preview img is escaped', false !== strpos( $st, 'src="https://fountain.fm/favicon.ico"' ) );
 check( 'settings: icons without a usable favicon.ico preview their mirror', false !== strpos( $st, 'https://icons.duckduckgo.com/ip3/podcastindex.org.ico' ) && false !== strpos( $st, 'https://icons.duckduckgo.com/ip3/podfriend.com.ico' ) && false !== strpos( $st, 'https://icons.duckduckgo.com/ip3/app.podcastguru.io.ico' ) );

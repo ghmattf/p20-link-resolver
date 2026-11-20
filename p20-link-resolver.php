@@ -1215,6 +1215,10 @@ class P20_Link_Resolver {
 			'truefans'     => array( 'label' => 'TrueFans', 'domain' => 'truefans.fm', 'icon' => 'https://icons.duckduckgo.com/ip3/truefans.fm.ico' ),
 			'podcastindex' => array( 'label' => 'Podcast Index', 'domain' => 'podcastindex.org', 'icon' => 'https://icons.duckduckgo.com/ip3/podcastindex.org.ico' ),
 			'podcastguru'  => array( 'label' => 'Podcast Guru', 'domain' => 'app.podcastguru.io', 'icon' => 'https://icons.duckduckgo.com/ip3/app.podcastguru.io.ico' ),
+			// breez.link serves an HTML shell at /favicon.ico; the site's real
+			// icon is the PNG its own <link rel="icon"> points at (200, no
+			// Cross-Origin-Resource-Policy).
+			'breez'        => array( 'label' => 'Breez', 'domain' => 'breez.link', 'icon' => 'https://breez.technology/oim/favicon-32x32.png' ),
 		);
 	}
 
@@ -1374,6 +1378,20 @@ class P20_Link_Resolver {
 					return array( 'url' => 'https://app.podcastguru.io/podcast/' . md5( $feed_url ), 'episode' => false );
 				}
 				return null;
+
+			case 'breez':
+				// Guide pattern keyed on the feed URL: the show is
+				// ?feedURL=..., an episode appends &episodeID={episode guid}.
+				// Both need feedURL, so a row with no feed URL gets no button.
+				$feed_url = isset( $r['feed_url'] ) ? trim( (string) $r['feed_url'] ) : '';
+				if ( '' === $feed_url ) {
+					return null;
+				}
+				$url = 'https://breez.link/p?feedURL=' . self::encode_uri_component( $feed_url );
+				if ( $has_ep ) {
+					$url .= '&episodeID=' . self::encode_uri_component( $ep_guid );
+				}
+				return array( 'url' => $url, 'episode' => $has_ep );
 		}
 		return null;
 	}

@@ -1,6 +1,6 @@
 # Podcast 2.0 Link Resolver
 
-A WordPress plugin that renders smart links to a podcast show or a single episode in **Podcasting 2.0 apps only** (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy, Castamatic, TrueFans, Podcast Index, Podcast Guru). A pod.link alternative for general podcasts, modelled on V4V MusicLink Pro.
+A WordPress plugin that renders smart links to a podcast show or a single episode in **Podcasting 2.0 apps only** (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy, Castamatic, TrueFans, Podcast Index, Podcast Guru, Breez). A pod.link alternative for general podcasts, modelled on V4V MusicLink Pro.
 
 Metadata (title, author, artwork, ids) comes from the [Podcast Index API](https://api.podcastindex.org) (free key + secret).
 
@@ -40,8 +40,9 @@ Patterns come from the Podcast Index's [podcast-platform-links](https://github.c
 | TrueFans | `truefans.fm/{podcast:guid}` | needs a TrueFans-internal id - opens the show |
 | Podcast Index | `podcastindex.org/podcast/{podcast:guid}` (PI feed id also accepted) | no episode permalink documented - opens the show |
 | Podcast Guru | `app.podcastguru.io/podcast/{Apple id}`, or `app.podcastguru.io/podcast/{md5(feed URL)}` for shows with no Apple id | needs a Podcast Guru-internal id - opens the show |
+| Breez | `breez.link/p?feedURL={feed URL}` | `breez.link/p?feedURL={feed URL}&episodeID={episode guid}` |
 
-Podfriend keys on the Podcast Index feed id (its guide-listed Apple-id route is gone - 410), so it appears for every resolved show. Podcast Guru prefers the Apple id and falls back to `md5(feed URL)` for shows listed only in the Podcast Index (the feed URL is stored on the cache row; rows cached before the upgrade pick it up on their next background refresh). Castamatic, TrueFans and Podcast Index are keyed on the `podcast:guid` (Podcast Index falls back to the feed id) and are hidden when neither is known. When an episode was requested but an app can only link the show, its button says "(opens the show)". If the Podcast Index doesn't know the episode yet, every app falls back to the show and a notice explains why.
+Podfriend keys on the Podcast Index feed id (its guide-listed Apple-id route is gone - 410), so it appears for every resolved show. Podcast Guru prefers the Apple id and falls back to `md5(feed URL)` for shows listed only in the Podcast Index (the feed URL is stored on the cache row; rows cached before the upgrade pick it up on their next background refresh). Breez is keyed entirely on the feed URL (both its show and its episode pattern need `feedURL`), so it is hidden when the row has no feed URL - rows cached before the `feed_url` column was added pick it up on their next background refresh. Castamatic, TrueFans and Podcast Index are keyed on the `podcast:guid` (Podcast Index falls back to the feed id) and are hidden when neither is known. When an episode was requested but an app can only link the show, its button says "(opens the show)". If the Podcast Index doesn't know the episode yet, every app falls back to the show and a notice explains why.
 
 Podverse episode links are resolved through Podverse's public url-resolver (`GET api.podverse.fm/api/v1/url-resolver/episode?podcastIndexId={PI feed id}&episodeGuid={guid}` -> `{"webUrl":"https://podverse.fm/episode/{id}"}`, no key required) and cached like the Fountain lookups; a miss or lookup failure falls back to the show link. CurioCaster has no episode route at all - its client route list contains only `/`, `/fn`, `/podcast` and `/podcast/[podcastid]` (verified live 2026-11-16) - so its episode link opens the show.
 
@@ -95,10 +96,12 @@ Verified live on 2026-11-20 (agent):
 - Podfriend's current URL space: `/podcast/{PI feed id}` is 200 (301 to the slug-canonical), `/podcast/{podcast:guid}` is 200, the guide's Apple-id route is 410 Gone, and `/podcast/{base}/{episode guid}` 404s on every base - episode links open the show
 - Podcast Guru's addressing: `/podcast/{appleID}` is 301 to `/podcast/{slug}-{md5(feed URL)}` (200), the bare `md5(feed URL)` id renders directly, and `podcast:guid` / `pi{id}` forms 404
 - Default icon URLs (checked 2026-11-20 with a cross-site `Referer`, then loaded in Firefox from a cross-origin page): `podfriend.com/favicon.ico` and `app.podcastguru.io/favicon.ico` are 404, `podcastindex.org` answers **every** asset request with 403 ("don't scrape our website"), and - the part `curl` can't see - Podfriend's real icons (`favicon-192.png`, `favicon.svg`) send `cross-origin-resource-policy: same-site` and Podcast Guru's (`favicons/android-icon-192x192.png`) send `same-origin`, so a browser refuses to draw them on another site's page. Those three apps therefore carry an explicit registry icon: the DuckDuckGo mirror `icons.duckduckgo.com/ip3/{domain}.ico` (sends no CORP, and serves each app's own logo - Podfriend's face, Podcast Guru's lotus mic, Podcast Index's microphone). Verified in Firefox: direct URLs show the broken-image marker, mirrors render. An icon with a transparent centre (CurioCaster's) still counts as loaded.
+- Breez's icon (checked 2026-11-20): `breez.link/favicon.ico` is an HTML shell, not an image, so the registry points at the PNG Breez's own `<link rel="icon">` uses (`breez.technology/oim/favicon-32x32.png` - 200, no `Cross-Origin-Resource-Policy`, loaded from a cross-origin page in Firefox)
 
 Not yet verified live - confirmed only against the documentation:
 
 - The Podcast Guru pattern (added 2026-11-16; from the platform-links guide)
+- The Breez pattern (added 2026-11-20; from the platform-links guide) - `breez.link/p?feedURL=...` answers 200 but returns the site's marketing shell byte-for-byte for a bogus feed URL too, so a correct target can't be confirmed from the sandbox (same shape as Fountain's client-side 404)
 - The Podcast Index `podcasts/byitunesid` endpoint (from the API's OpenAPI spec on the `master` branch; the agent sandbox has no API credentials) - it resolves legacy Apple-id Podfriend pastes and Podcast Guru pasted links; `podcasts/byfeedid` (same spec) resolves current Podfriend feed-id pastes
 
 Override any app icon in settings if one doesn't load.

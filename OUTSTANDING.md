@@ -54,11 +54,10 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **Plan:** re-send the full param'd `/podcastlink/` URL to @WebpageBot (the crawler's cache of the old snapshot may need to expire first); if text/image is still blank, swap the feed artwork gif for a jpg as og:image (feed-side, outside this repo).
 
 ### 10. Breez as a link target
-- **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
-- **What:** Breez (iOS, Android) is a Lightning wallet with a built-in podcast player and boost support (Boostagrams, Sat Streaming, Value) but is not in the resolver's registry.
-- **GUID support (platform-links guide, read 2026-11-15):** show - no podcast:guid form, keyed on `feedURL` (`breez.link/p?feedURL=${encodeURIComponent(feedURL)}`); episode - the episode guid IS used, but as a query param next to the feed URL (`...&episodeID=${encodeURIComponent(episodeGUID)}`), so both patterns still need `feedURL`. **The feed URL is now stored** on the cache row (`feed_url` column, `TABLE_VERSION` 3, shipped for Podcast Guru's md5 addressing) - the schema half of this item is done.
-- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
-- **Plan:** add the Breez registry entry + show/episode query-param cases (feed URL straight from `$r['feed_url']`) + tests. No further schema work.
+- **Status:** Implemented 2026-11-20, **not yet released** - remove this entry in the release turn (CHANGELOG entry + `v0.1.15` still to come)
+- **What:** Breez (iOS, Android) is a Lightning wallet with a built-in podcast player and boost support (Boostagrams, Sat Streaming, Value). Registry entry + `app_link()` case shipped: show `breez.link/p?feedURL={feed URL}`, episode adds `&episodeID={episode guid}` (both from the platform-links guide), using `encode_uri_component()` for `encodeURIComponent()` parity and the cache row's `feed_url` column - no feed URL, no button. Icon: `breez.link/favicon.ico` is an HTML shell, so the registry carries `breez.technology/oim/favicon-32x32.png` (loaded from a cross-origin page in Firefox). Tests: show / episode / omitted-without-feed-url, and the 9 -> 10 button and settings-preview counts.
+- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README intro, app table and verification section; `tests/resolver_test.php`.
+- **Still open:** the URL pattern itself is **not verified live** - `breez.link/p?feedURL=<bogus>` returns the same marketing shell as a real feed URL, so the sandbox cannot distinguish a correct target from a catch-all (README + AGENTS both record this as documented-only).
 
 ### 11. Reverse slug-canonical and md5 share links in search
 - **Status:** Open (identified 2026-11-20)
@@ -69,7 +68,7 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 ## Closed decisions
 
 - **One edition only** (no standard/Pro split): decided by the user, 2026-11-11.
-- **Apps limited to Podcasting 2.0 apps** (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy, Castamatic, TrueFans, Podcast Index, Podcast Guru); no Apple/Spotify-style mainstream targets.
+- **Apps limited to Podcasting 2.0 apps** (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy, Castamatic, TrueFans, Podcast Index, Podcast Guru, Breez); no Apple/Spotify-style mainstream targets.
 - **Link level is show + episode** (not show-only).
 - **Fountain always renders a button**, degrading episode → show → `fountain.fm/discover` (user decision 2026-11-12); supersedes 0.1.2's "omit the button on an unreliable lookup" policy.
 - **Podfans**: dropped by the user 2026-11-16 - no documented URL pattern, site unreachable from the sandbox.
