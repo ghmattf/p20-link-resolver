@@ -186,9 +186,13 @@ $GLOBALS['http_mock'] = array(
 check( 'fountain show', 'https://fountain.fm/show/AbCdShow123' === call( $o, 'app_link', 'fountain', $base )['url'] );
 check( 'curiocaster show', 'https://curiocaster.com/podcast/pi75075' === call( $o, 'app_link', 'curiocaster', $base )['url'] );
 check( 'podverse show', 'https://api.podverse.fm/api/v1/podcast/podcastindex/75075' === call( $o, 'app_link', 'podverse', $base )['url'] );
-check( 'podfriend show', 'https://podfriend.com/podcast/1234' === call( $o, 'app_link', 'podfriend', $base )['url'] );
+check( 'podfriend show (PI feed id)', 'https://podfriend.com/podcast/75075' === call( $o, 'app_link', 'podfriend', $base )['url'] );
 $noapple = $base; $noapple['itunes_id'] = 0;
-check( 'podfriend omitted without apple id', null === call( $o, 'app_link', 'podfriend', $noapple ) );
+$nofeed = $base; $nofeed['feed_id'] = 0; $nofeed['podcast_guid'] = '';
+check( 'podfriend omitted with no feed id or guid', null === call( $o, 'app_link', 'podfriend', $nofeed ) );
+$guidonly = $base; $guidonly['feed_id'] = 0;
+check( 'podfriend falls back to podcast guid', 'https://podfriend.com/podcast/g' === call( $o, 'app_link', 'podfriend', $guidonly )['url'] );
+check( 'truefans default icon bypasses hotlink protection', 'https://icons.duckduckgo.com/ip3/truefans.fm.ico' === call( $o, 'app_icon', 'truefans', call( $o, 'app_registry' )['truefans'] ) );
 check( 'boostmebuddy show', 'https://www.boostmebuddy.com/?podcast=g' === call( $o, 'app_link', 'boostmebuddy', $base )['url'] );
 $noguid = $base; $noguid['podcast_guid'] = '';
 check( 'boostmebuddy omitted without podcast guid', null === call( $o, 'app_link', 'boostmebuddy', $noguid ) );
@@ -201,14 +205,16 @@ check( 'podcastindex show falls back to feed id', 'https://podcastindex.org/podc
 $noid = $noguid; $noid['feed_id'] = 0;
 check( 'podcastindex omitted with no ids', null === call( $o, 'app_link', 'podcastindex', $noid ) );
 check( 'podcastguru show', 'https://app.podcastguru.io/podcast/1234' === call( $o, 'app_link', 'podcastguru', $base )['url'] );
-check( 'podcastguru omitted without apple id', null === call( $o, 'app_link', 'podcastguru', $noapple ) );
+check( 'podcastguru omitted without apple id or feed url', null === call( $o, 'app_link', 'podcastguru', $noapple ) );
+$gurl = $noapple; $gurl['feed_url'] = 'https://feeds.example.com/show.xml';
+check( 'podcastguru PI-only show uses md5(feed url)', 'https://app.podcastguru.io/podcast/' . md5( 'https://feeds.example.com/show.xml' ) === call( $o, 'app_link', 'podcastguru', $gurl )['url'] );
 
 $ep = $base;
 $ep['episode_wanted'] = true; $ep['episode_guid'] = 'PC2084/a b'; $ep['pi_episode_id'] = 16795090;
 $l = call( $o, 'app_link', 'fountain', $ep );
 check( 'fountain episode link', 'https://fountain.fm/episode/EfGhEp456' === $l['url'] && $l['episode'] );
 $l = call( $o, 'app_link', 'podfriend', $ep );
-check( 'podfriend episode link encodes guid', 'https://podfriend.com/podcast/1234/PC2084%2Fa%20b' === $l['url'] && $l['episode'] );
+check( 'podfriend episode degrades to show (guide subpath is 404)', ! $l['episode'] && 'https://podfriend.com/podcast/75075' === $l['url'] );
 $l = call( $o, 'app_link', 'curiocaster', $ep );
 check( 'curiocaster episode degrades to show', ! $l['episode'] && 'https://curiocaster.com/podcast/pi75075' === $l['url'] );
 
@@ -399,6 +405,7 @@ $GLOBALS['http_log'] = array(); // Fountain lookups above already logged.
 $feed_json = json_encode( array( 'status' => 'true', 'feed' => array(
 	'id' => 920666, 'podcastGuid' => 'abc-guid', 'title' => 'Podcasting 2.0', 'author' => 'Adam',
 	'image' => 'https://img/i.jpg', 'artwork' => 'https://img/art.jpg', 'itunesId' => 1554567890,
+	'url' => 'https://feeds.podcastindex.org/pc20.xml',
 ) ) );
 $ep_json = json_encode( array( 'status' => 'true', 'episode' => array( 'id' => 555, 'title' => 'Ep 1', 'guid' => 'PC2084', 'image' => 'https://img/ep.jpg' ) ) );
 $GLOBALS['http_mock'] = array(
@@ -415,6 +422,9 @@ check( 'resolve show: redirection disabled', 0 === $GLOBALS['http_log'][0][1]['r
 $before = count( $GLOBALS['http_log'] );
 $r2 = call( $o, 'resolve_release', 'abc-guid', '' );
 check( 'second show resolve served from cache (no HTTP)', count( $GLOBALS['http_log'] ) === $before && 'Podcasting 2.0' === $r2['show_title'] );
+check( 'resolve show: feed_url carried fetch and cache-row paths',
+	'https://feeds.podcastindex.org/pc20.xml' === $r['feed_url']
+	&& 'https://feeds.podcastindex.org/pc20.xml' === $r2['feed_url'] );
 
 $r3 = call( $o, 'resolve_release', 'abc-guid', 'PC2084' );
 check( 'resolve episode: ids', 555 === $r3['pi_episode_id'] && 'Ep 1' === $r3['episode_title'] && ! $r3['episode_missing'] );
@@ -456,7 +466,7 @@ $html = $o->render( array( 'show' => 'abc-guid', 'episode' => 'PC2084' ) );
 check( 'render: 9 app buttons', 9 === substr_count( $html, 'class="p20link-item ' ) );
 check( 'render: episode title shown', false !== strpos( $html, 'Ep 1' ) );
 check( 'render: fountain episode href', false !== strpos( $html, 'https://fountain.fm/episode/EpRender1' ) );
-check( 'render: degraded apps flagged', substr_count( $html, '(opens the show)' ) === 6 );
+check( 'render: degraded apps flagged', substr_count( $html, '(opens the show)' ) === 7 );
 $nr = $ep; $nr['episode_title'] = 'T';
 $nh = call( $o, 'render_html', array(
 	'fountain' => array( 'url' => 'https://fountain.fm/discover', 'label' => 'Fountain', 'episode' => false, 'icon_url' => '', 'note' => 'discover' ),
@@ -475,7 +485,7 @@ $GLOBALS['http_mock'] = array(
 );
 $dh = $o->render( array( 'show' => 'discover-guid', 'episode' => 'PC2084' ) );
 check( 'render: fountain discover note reaches HTML', false !== strpos( $dh, '(opens Fountain)' ) );
-check( 'render: other apps still say opens the show', 6 === substr_count( $dh, '(opens the show)' ) );
+check( 'render: other apps still say opens the show', 7 === substr_count( $dh, '(opens the show)' ) );
 
 $html = $o->render( array( 'show' => 'abc-guid', 'header' => 'false' ) );
 check( 'render header=false hides title', false === strpos( $html, 'p20link-title' ) );
@@ -719,14 +729,17 @@ check( 'search boostmebuddy without podcast param ignored', null === call( $o, '
 check( 'guid/feed-id share links need no HTTP', count( $GLOBALS['http_log'] ) === $n );
 check( 'search dispatcher still handles fountain links', array( 'ref' => '11111111-2222-3333-4444-555555555555', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://fountain.fm/show/ApiShowId0000000001' ) );
 
-// Apple-id keyed links (Podfriend, Podcast Guru) need one PI byitunesid
-// call, then remember the mapping.
+// Apple-id keyed links (Podcast Guru; legacy Podfriend pastes) need one
+// PI byitunesid call, then remember the mapping. Podfriend's digits go
+// to byfeedid first (Podfriend's current URL space, live 2026-11-20)
+// and only fall back to byitunesid when PI knows no such feed id.
+$GLOBALS['http_mock']['podcasts/byfeedid']   = array( 'code' => 200, 'body' => json_encode( array( 'feed' => null ) ) );
 $GLOBALS['http_mock']['podcasts/byitunesid'] = array( 'code' => 200, 'body' => json_encode( array( 'feed' => array( 'id' => 1234, 'podcastGuid' => 'appleshowguid-001' ) ) ) );
 $n = count( $GLOBALS['http_log'] );
-check( 'search podfriend show link via apple id', array( 'ref' => 'appleshowguid-001', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://podfriend.com/podcast/1234' ) );
+check( 'search podfriend legacy apple link (feed id miss, apple fallback)', array( 'ref' => 'appleshowguid-001', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://podfriend.com/podcast/1234' ) );
 check( 'search podfriend episode link keeps guid', array( 'ref' => 'appleshowguid-001', 'episode' => 'PC2084/a b' ) === call( $o, 'search_direct_link', 'https://podfriend.com/podcast/1234/PC2084%2Fa%20b' ) );
 check( 'search podcastguru share link via apple id', array( 'ref' => 'appleshowguid-001', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://app.podcastguru.io/podcast/1234' ) );
-check( 'apple id resolved with one PI call and remembered', count( $GLOBALS['http_log'] ) === $n + 1 );
+check( 'apple id resolved with feedid-miss + itunesid calls, then remembered', count( $GLOBALS['http_log'] ) === $n + 2 );
 $GLOBALS['http_mock']['podcasts/byitunesid'] = array( 'code' => 200, 'body' => json_encode( array( 'feed' => null ) ) );
 check( 'search unknown apple id -> empty results', array() === call( $o, 'search_direct_link', 'https://podfriend.com/podcast/999999999' ) );
 $n = count( $GLOBALS['http_log'] );
@@ -734,6 +747,17 @@ call( $o, 'search_direct_link', 'https://podfriend.com/podcast/999999999' );
 check( 'apple id miss remembered', count( $GLOBALS['http_log'] ) === $n );
 $GLOBALS['http_mock']['podcasts/byitunesid'] = array( 'code' => 500, 'body' => '' );
 check( 'search apple id 500 -> unreliable', false === call( $o, 'search_direct_link', 'https://app.podcastguru.io/podcast/555555555' ) );
+
+// Podfriend's current share links carry the PI feed id: resolved first,
+// no Apple guess; a podcast:guid pastes straight through; slugs can't be
+// reversed offline.
+$GLOBALS['http_mock']['podcasts/byfeedid'] = array( 'code' => 200, 'body' => json_encode( array( 'feed' => array( 'id' => 75075, 'podcastGuid' => 'g' ) ) ) );
+check( 'search podfriend feed-id link', array( 'ref' => 'g', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://podfriend.com/podcast/75075' ) );
+$n = count( $GLOBALS['http_log'] );
+call( $o, 'search_direct_link', 'https://podfriend.com/podcast/75075' );
+check( 'podfriend feed-id lookup remembered', count( $GLOBALS['http_log'] ) === $n );
+check( 'search podfriend guid link needs no HTTP', array( 'ref' => '917393e3-1b1e-5cef-ace4-edaa54e1f810', 'episode' => '' ) === call( $o, 'search_direct_link', 'https://podfriend.com/podcast/917393e3-1b1e-5cef-ace4-edaa54e1f810' ) && count( $GLOBALS['http_log'] ) === $n );
+check( 'search podfriend slug link ignored', null === call( $o, 'search_direct_link', 'https://podfriend.com/podcast/podcasting-2-0' ) );
 
 // Podverse web ids reverse through Podverse's own API (live-verified
 // 2026-11-18): podcast -> podcastGuid, episode -> RSS guid + parent.

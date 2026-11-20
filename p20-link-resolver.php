@@ -55,7 +55,7 @@ class P20_Link_Resolver {
 	const FAIL_TTL            = HOUR_IN_SECONDS;
 	const SOFT_FAIL_TTL       = 30;
 	const NEG_SCHEMA          = 1;        // Bump to invalidate remembered misses.
-	const TABLE_VERSION       = 2;        // Bump when a CREATE TABLE changes.
+	const TABLE_VERSION       = 3;        // Bump when a CREATE TABLE changes (3: +feed_url).
 	const FOUNTAIN_FAIL_TTL   = 30 * MINUTE_IN_SECONDS; // Fountain definitive misses (shorter than neg_ttl()'s hour).
 	const DERIVED_URL_TTL     = 30 * DAY_IN_SECONDS;    // Fountain URL cached on the row before re-deriving.
 	const SEARCH_MAX          = 40;
@@ -203,6 +203,7 @@ class P20_Link_Resolver {
 			feed_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			podcast_guid varchar(64) NOT NULL DEFAULT '',
 			itunes_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			feed_url text NOT NULL,
 			show_title text NOT NULL,
 			author text NOT NULL,
 			image_url text NOT NULL,
@@ -267,6 +268,7 @@ class P20_Link_Resolver {
 				'feed_id'       => (int) $d['feed_id'],
 				'podcast_guid'  => (string) $d['podcast_guid'],
 				'itunes_id'     => (int) $d['itunes_id'],
+				'feed_url'      => isset( $d['feed_url'] ) ? (string) $d['feed_url'] : '',
 				'show_title'    => (string) $d['show_title'],
 				'author'        => (string) $d['author'],
 				'image_url'     => (string) $d['image'],
@@ -277,7 +279,7 @@ class P20_Link_Resolver {
 				'fountain_date' => $f_date,
 				'updated_at'    => gmdate( 'Y-m-d H:i:s' ),
 			),
-			array( '%s', '%s', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s' )
+			array( '%s', '%s', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s' )
 		);
 		unset( $this->row_memo[ $hash ] );
 	}
@@ -405,6 +407,7 @@ class P20_Link_Resolver {
 			'feed_id'       => (int) $feed['id'],
 			'podcast_guid'  => isset( $feed['podcastGuid'] ) ? (string) $feed['podcastGuid'] : '',
 			'itunes_id'     => isset( $feed['itunesId'] ) ? (int) $feed['itunesId'] : 0,
+			'feed_url'      => isset( $feed['url'] ) ? (string) $feed['url'] : '',
 			'show_title'    => isset( $feed['title'] ) ? (string) $feed['title'] : '',
 			'author'        => ! empty( $feed['author'] ) ? (string) $feed['author'] : ( isset( $feed['ownerName'] ) ? (string) $feed['ownerName'] : '' ),
 			'image'         => (string) $image,
@@ -763,12 +766,30 @@ class P20_Link_Resolver {
 				return array( 'ref' => $ref, 'episode' => '' !== $raw_episode ? $this->guard_episode( $raw_episode ) : '' );
 
 			case 'podfriend.com':
-				// podfriend.com/podcast/{Apple id}[/{encoded episode guid}]
-				if ( ! preg_match( '~^/podcast/(\d{1,12})(?:/([^/?#]+))?/?$~', $path, $m ) ) {
+				// podfriend.com/podcast/{PI feed id|podcast:guid}[/{episode
+				// guid}] - the Apple-id route is 410 (live 2026-11-20), so
+				// digits go to byfeedid first and only fall back to
+				// byitunesid for legacy Apple-id pastes; a podcast:guid
+				// pastes straight through; slug-canonical shares can't be
+				// reversed offline.
+				if ( ! preg_match( '~^/podcast/([A-Za-z0-9\-]{1,64})(?:/([^/?#]+))?/?$~', $path, $m ) ) {
 					return null;
 				}
-				$ep  = isset( $m[2] ) && '' !== $m[2] ? $this->guard_episode( rawurldecode( $m[2] ) ) : '';
-				$ref = $this->apple_ref( $m[1] );
+				$ep   = isset( $m[2] ) && '' !== $m[2] ? $this->guard_episode( rawurldecode( $m[2] ) ) : '';
+				$base = $m[1];
+				if ( ctype_digit( $base ) ) {
+					$ref = $this->feedid_ref( $base );
+					if ( null === $ref ) {
+						return false;
+					}
+					if ( '' === $ref ) {
+						$ref = $this->apple_ref( $base ); // Legacy Apple-id paste.
+					}
+				} elseif ( preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $base ) ) {
+					$ref = $this->guard_show( $base );
+				} else {
+					return null;
+				}
 				if ( null === $ref ) {
 					return false;
 				}
@@ -807,39 +828,67 @@ class P20_Link_Resolver {
 	}
 
 	/**
-	 * PI feed reference (podcast:guid, else feed id) for an Apple
-	 * Podcasts id - the key Podfriend and Podcast Guru links are built
-	 * on. Returns the ref, '' for a definitive miss (PI doesn't know the
-	 * id) or null for an unreliable answer; remembered in p20l_aid_*
-	 * transients like the other direct-input lookups.
+	 * PI feed reference (podcast:guid, else feed id) from a byitunesid or
+	 * byfeedid response body. '' = the API knows no such feed.
+	 */
+	private function ref_from_feed_body( $body ) {
+		$feed = isset( $body['feed'] ) && is_array( $body['feed'] ) ? $body['feed'] : array();
+		if ( empty( $feed['id'] ) ) {
+			return '';
+		}
+		$ref = ! empty( $feed['podcastGuid'] ) ? $this->guard_show( $feed['podcastGuid'] ) : '';
+		return '' !== $ref ? $ref : $this->guard_show( (string) (int) $feed['id'] );
+	}
+
+	/**
+	 * Shared cache/read for the two PI id lookups (apple_ref, feedid_ref):
+	 * '' = definitive miss, null = unreliable, remembered in p20l_{kind}_*
+	 * transients keyed on the raw id.
+	 */
+	private function pi_id_ref( $kind, $path, $query, $id ) {
+		$key    = 'p20l_' . $kind . '_' . self::DIRECT_SCHEMA . '_' . md5( $id );
+		$cached = get_transient( $key );
+		if ( false !== $cached ) {
+			return '~' === $cached ? null : (string) $cached;
+		}
+		$body = $this->api_get( $path, $query );
+		if ( ! is_array( $body ) ) {
+			// 404 is definitive; transport / 5xx / undecodable is not.
+			$def = 404 === $this->last_status;
+			set_transient( $key, $def ? '' : '~', $this->neg_ttl() );
+			return $def ? '' : null;
+		}
+		$ref = $this->ref_from_feed_body( $body );
+		set_transient( $key, $ref, '' !== $ref ? self::DIRECT_HIT_TTL : $this->neg_ttl() );
+		return $ref;
+	}
+
+	/**
+	 * PI feed reference for an Apple Podcasts id via podcasts/byitunesid.
+	 * Returns the ref, '' for a definitive miss or null for an unreliable
+	 * answer; remembered in p20l_aid_* transients.
 	 */
 	private function apple_ref( $apple_id ) {
 		$apple_id = preg_replace( '/\D/', '', (string) $apple_id );
 		if ( '' === $apple_id ) {
 			return '';
 		}
-		$key    = 'p20l_aid_' . self::DIRECT_SCHEMA . '_' . md5( $apple_id );
-		$cached = get_transient( $key );
-		if ( false !== $cached ) {
-			return '~' === $cached ? null : (string) $cached;
-		}
-		$body = $this->api_get( '/podcasts/byitunesid', array( 'id' => $apple_id ) );
-		if ( ! is_array( $body ) ) {
-			// Transport / 5xx / undecodable: remember briefly, never as a miss.
-			set_transient( $key, '~', $this->neg_ttl() );
-			return null;
-		}
-		$feed = isset( $body['feed'] ) && is_array( $body['feed'] ) ? $body['feed'] : array();
-		if ( empty( $feed['id'] ) ) {
-			set_transient( $key, '', $this->neg_ttl() ); // 200 without a feed: definitive.
+		return $this->pi_id_ref( 'aid', '/podcasts/byitunesid', array( 'id' => $apple_id ), $apple_id );
+	}
+
+	/**
+	 * PI feed reference for a numeric PI feed id via podcasts/byfeedid -
+	 * Podfriend's current show URL space (live 2026-11-20), so pasted
+	 * Podfriend links (and our own) resolve without guessing whether the
+	 * digits are an Apple id. Same contract as apple_ref(); remembered in
+	 * p20l_fid_* transients.
+	 */
+	private function feedid_ref( $feed_id ) {
+		$feed_id = preg_replace( '/\D/', '', (string) $feed_id );
+		if ( '' === $feed_id || '0' === $feed_id ) {
 			return '';
 		}
-		$ref = ! empty( $feed['podcastGuid'] ) ? $this->guard_show( $feed['podcastGuid'] ) : '';
-		if ( '' === $ref ) {
-			$ref = $this->guard_show( (string) (int) $feed['id'] );
-		}
-		set_transient( $key, $ref, self::DIRECT_HIT_TTL );
-		return $ref;
+		return $this->pi_id_ref( 'fid', '/podcasts/byfeedid', array( 'id' => $feed_id ), $feed_id );
 	}
 
 	/**
@@ -1027,6 +1076,7 @@ class P20_Link_Resolver {
 			'feed_id'         => (int) $row->feed_id,
 			'podcast_guid'    => $row->podcast_guid,
 			'itunes_id'       => (int) $row->itunes_id,
+			'feed_url'        => isset( $row->feed_url ) ? (string) $row->feed_url : '',
 			'show_title'      => $row->show_title,
 			'author'          => $row->author,
 			'image'           => $row->image_url,
@@ -1045,6 +1095,7 @@ class P20_Link_Resolver {
 			'feed_id'         => (int) $d['feed_id'],
 			'podcast_guid'    => $d['podcast_guid'],
 			'itunes_id'       => (int) $d['itunes_id'],
+			'feed_url'        => isset( $d['feed_url'] ) ? (string) $d['feed_url'] : '',
 			'show_title'      => $d['show_title'],
 			'author'          => $d['author'],
 			'image'           => $d['image'],
@@ -1062,6 +1113,7 @@ class P20_Link_Resolver {
 			'feed_id'       => (int) $row->feed_id,
 			'podcast_guid'  => $row->podcast_guid,
 			'itunes_id'     => (int) $row->itunes_id,
+			'feed_url'      => isset( $row->feed_url ) ? (string) $row->feed_url : '',
 			'show_title'    => $row->show_title,
 			'author'        => $row->author,
 			'image'         => $row->image_url,
@@ -1156,7 +1208,7 @@ class P20_Link_Resolver {
 			'podfriend'    => array( 'label' => 'Podfriend', 'domain' => 'podfriend.com' ),
 			'boostmebuddy' => array( 'label' => 'BoostMeBuddy', 'domain' => 'boostmebuddy.com', 'icon' => 'https://www.boostmebuddy.com/icons/buddy/favicon.svg' ),
 			'castamatic'   => array( 'label' => 'Castamatic', 'domain' => 'castamatic.com' ),
-			'truefans'     => array( 'label' => 'TrueFans', 'domain' => 'truefans.fm' ),
+			'truefans'     => array( 'label' => 'TrueFans', 'domain' => 'truefans.fm', 'icon' => 'https://icons.duckduckgo.com/ip3/truefans.fm.ico' ),
 			'podcastindex' => array( 'label' => 'Podcast Index', 'domain' => 'podcastindex.org' ),
 			'podcastguru'  => array( 'label' => 'Podcast Guru', 'domain' => 'app.podcastguru.io' ),
 		);
@@ -1258,15 +1310,18 @@ class P20_Link_Resolver {
 				return array( 'url' => 'https://api.podverse.fm/api/v1/podcast/podcastindex/' . $feed_id, 'episode' => false );
 
 			case 'podfriend':
-				$apple = (int) $r['itunes_id'];
-				if ( $apple <= 0 ) {
-					return null; // Podfriend is keyed on the Apple Podcasts id.
+				// The guide's Apple-id route is dead (410, live 2026-11-20);
+				// Podfriend's show pages key on the PI feed id (301 to the
+				// slug-canonical) or the podcast:guid (200). Every
+				// /podcast/{base}/{episode guid} form 404s, so an episode
+				// request opens the show.
+				if ( $feed_id > 0 ) {
+					return array( 'url' => 'https://podfriend.com/podcast/' . $feed_id, 'episode' => false );
 				}
-				$url = 'https://podfriend.com/podcast/' . $apple;
-				if ( $has_ep ) {
-					return array( 'url' => $url . '/' . self::encode_uri_component( $ep_guid ), 'episode' => true );
+				if ( '' !== $pguid ) {
+					return array( 'url' => 'https://podfriend.com/podcast/' . rawurlencode( $pguid ), 'episode' => false );
 				}
-				return array( 'url' => $url, 'episode' => false );
+				return null;
 
 			case 'boostmebuddy':
 				// The app's own query-param pattern, keyed on the guids
@@ -1300,11 +1355,21 @@ class P20_Link_Resolver {
 				return $feed_id > 0 ? array( 'url' => 'https://podcastindex.org/podcast/' . $feed_id, 'episode' => false ) : null;
 
 			case 'podcastguru':
-				// Guide pattern keyed on the Apple Podcasts id (same as
-				// Podfriend); the episode URL needs Podcast Guru's internal
-				// episode id, so an episode request opens the show.
+				// Guide pattern keyed on the Apple Podcasts id. Shows with
+				// no Apple id (listed only in the Podcast Index) use the
+				// site's other addressing: the show id is md5(feed URL)
+				// (verified live 2026-11-20 - the bare hex route renders).
+				// Episode URLs need Podcast Guru's internal ids, so an
+				// episode request opens the show.
 				$apple = (int) $r['itunes_id'];
-				return $apple > 0 ? array( 'url' => 'https://app.podcastguru.io/podcast/' . $apple, 'episode' => false ) : null;
+				if ( $apple > 0 ) {
+					return array( 'url' => 'https://app.podcastguru.io/podcast/' . $apple, 'episode' => false );
+				}
+				$feed_url = isset( $r['feed_url'] ) ? trim( (string) $r['feed_url'] ) : '';
+				if ( '' !== $feed_url ) {
+					return array( 'url' => 'https://app.podcastguru.io/podcast/' . md5( $feed_url ), 'episode' => false );
+				}
+				return null;
 		}
 		return null;
 	}

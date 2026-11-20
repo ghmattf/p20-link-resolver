@@ -34,14 +34,14 @@ Patterns come from the Podcast Index's [podcast-platform-links](https://github.c
 | Fountain | `fountain.fm/show/{Fountain id}` resolved from `podcast:guid` | `fountain.fm/episode/{Fountain id}` resolved from the episode guid |
 | CurioCaster | `curiocaster.com/podcast/pi{PI feed id}` | no episode route (verified 2026-11-16) - opens the show |
 | Podverse | `api.podverse.fm/api/v1/podcast/podcastindex/{PI feed id}` | `podverse.fm/episode/{Podverse id}` resolved from PI feed id + episode guid |
-| Podfriend | `podfriend.com/podcast/{Apple id}` | `podfriend.com/podcast/{Apple id}/{encodeURIComponent(episode guid)}` |
+| Podfriend | `podfriend.com/podcast/{PI feed id}` (a `podcast:guid` also works) | needs a Podfriend-internal id - opens the show |
 | BoostMeBuddy | `www.boostmebuddy.com/?podcast={podcast:guid}` | `www.boostmebuddy.com/?podcast={podcast:guid}&episode={episode guid}` |
 | Castamatic | `castamatic.com/guid/{podcast:guid}` | needs a Castamatic-internal id - opens the show |
 | TrueFans | `truefans.fm/{podcast:guid}` | needs a TrueFans-internal id - opens the show |
 | Podcast Index | `podcastindex.org/podcast/{podcast:guid}` (PI feed id also accepted) | no episode permalink documented - opens the show |
-| Podcast Guru | `app.podcastguru.io/podcast/{Apple id}` | needs a Podcast Guru-internal id - opens the show |
+| Podcast Guru | `app.podcastguru.io/podcast/{Apple id}`, or `app.podcastguru.io/podcast/{md5(feed URL)}` for shows with no Apple id | needs a Podcast Guru-internal id - opens the show |
 
-Podfriend and Podcast Guru are keyed on the Apple Podcasts id, so they are hidden for shows that have none. Castamatic, TrueFans and Podcast Index are keyed on the `podcast:guid` (Podcast Index falls back to the feed id) and are hidden when neither is known. When an episode was requested but an app can only link the show, its button says "(opens the show)". If the Podcast Index doesn't know the episode yet, every app falls back to the show and a notice explains why.
+Podfriend keys on the Podcast Index feed id (its guide-listed Apple-id route is gone - 410), so it appears for every resolved show. Podcast Guru prefers the Apple id and falls back to `md5(feed URL)` for shows listed only in the Podcast Index (the feed URL is stored on the cache row; rows cached before the upgrade pick it up on their next background refresh). Castamatic, TrueFans and Podcast Index are keyed on the `podcast:guid` (Podcast Index falls back to the feed id) and are hidden when neither is known. When an episode was requested but an app can only link the show, its button says "(opens the show)". If the Podcast Index doesn't know the episode yet, every app falls back to the show and a notice explains why.
 
 Podverse episode links are resolved through Podverse's public url-resolver (`GET api.podverse.fm/api/v1/url-resolver/episode?podcastIndexId={PI feed id}&episodeGuid={guid}` -> `{"webUrl":"https://podverse.fm/episode/{id}"}`, no key required) and cached like the Fountain lookups; a miss or lookup failure falls back to the show link. CurioCaster has no episode route at all - its client route list contains only `/`, `/fn`, `/podcast` and `/podcast/[podcastid]` (verified live 2026-11-16) - so its episode link opens the show.
 
@@ -89,9 +89,15 @@ Verified live on 2026-11-18 (agent):
 
 - Podverse's reverse lookups for pasted share links: `GET api.podverse.fm/api/v1/podcast/{web id}` returns `podcastGuid` and `podcastIndexId` at the top level, `GET api.podverse.fm/api/v1/episode/{web id}` returns the RSS `guid` plus the parent `podcast.podcastGuid` / `podcast.podcastIndexId` (200; 404 for unknown ids)
 
+Verified live on 2026-11-20 (agent):
+
+- TrueFans' hotlink protection: every `truefans.fm` asset (favicon, `/images/*`, even `www.`) returns 403 to a cross-site `Referer` (Cloudflare error 1011), so the button icon uses DuckDuckGo's icon mirror `icons.duckduckgo.com/ip3/truefans.fm.ico`, which serves the byte-identical favicon with or without a referer
+- Podfriend's current URL space: `/podcast/{PI feed id}` is 200 (301 to the slug-canonical), `/podcast/{podcast:guid}` is 200, the guide's Apple-id route is 410 Gone, and `/podcast/{base}/{episode guid}` 404s on every base - episode links open the show
+- Podcast Guru's addressing: `/podcast/{appleID}` is 301 to `/podcast/{slug}-{md5(feed URL)}` (200), the bare `md5(feed URL)` id renders directly, and `podcast:guid` / `pi{id}` forms 404
+
 Not yet verified live - confirmed only against the documentation:
 
 - The Podcast Guru pattern (added 2026-11-16; from the platform-links guide)
-- The Podcast Index `podcasts/byitunesid` endpoint (from the API's OpenAPI spec on the `master` branch; the agent sandbox has no API credentials) - it powers the Apple-id keyed Podfriend and Podcast Guru pasted-link search
+- The Podcast Index `podcasts/byitunesid` endpoint (from the API's OpenAPI spec on the `master` branch; the agent sandbox has no API credentials) - it resolves legacy Apple-id Podfriend pastes and Podcast Guru pasted links; `podcasts/byfeedid` (same spec) resolves current Podfriend feed-id pastes
 
 Override any app icon in settings if one doesn't load.
