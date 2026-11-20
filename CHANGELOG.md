@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.14] - 2026-11-20
+
+- Podfriend and Podcast Guru icons: 0.1.13 pointed them at their real icon files, which `curl` happily downloads (200, cross-site referer) but a browser refuses to draw - both sites send a `Cross-Origin-Resource-Policy` (`same-site` / `same-origin`) that browsers enforce on cross-origin `<img>` loads. Both now use the same referer-safe DuckDuckGo mirror as TrueFans and Podcast Index; loaded in Firefox from a cross-origin page to confirm (direct URLs show the broken-image marker, mirrors render).
+
 ## [0.1.13] - 2026-11-20
 
 - Icons: Podfriend, Podcast Guru and Podcast Index showed no icon on the Settings tab (their `https://{domain}/favicon.ico` default is 404, 404 and a site-wide 403 - live 2026-11-20). Each app now carries its real icon in the registry instead: Podfriend's `favicon-192.png`, Podcast Guru's `favicons/android-icon-192x192.png`, and a referer-safe mirror for Podcast Index. Applies to the settings previews and the buttons on link pages alike.
