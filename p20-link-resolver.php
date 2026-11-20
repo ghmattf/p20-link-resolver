@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Podcast 2.0 Link Resolver
  * Description: pod.link-style smart links for podcasts, limited to Podcasting 2.0 apps (Fountain, CurioCaster, Podverse, Podfriend, BoostMeBuddy, Castamatic, TrueFans, Podcast Index, Podcast Guru). Link to a show or a single episode by its podcast:guid / episode guid; metadata comes from the Podcast Index API. Shortcode: [p20link].
- * Version: 0.1.12
+ * Version: 0.1.13
  * Requires at least: 5.3
  * Requires PHP: 7.4
  * Author: Matt Finlay
@@ -49,7 +49,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class P20_Link_Resolver {
 
-	const VERSION             = '0.1.12';
+	const VERSION             = '0.1.13';
 	const PI_API              = 'https://api.podcastindex.org/api/1.0';
 	const REFRESH_DEFAULT     = 12;       // Hours between background refreshes.
 	const FAIL_TTL            = HOUR_IN_SECONDS;
@@ -1205,12 +1205,15 @@ class P20_Link_Resolver {
 			'fountain'     => array( 'label' => 'Fountain', 'domain' => 'fountain.fm' ),
 			'curiocaster'  => array( 'label' => 'CurioCaster', 'domain' => 'curiocaster.com' ),
 			'podverse'     => array( 'label' => 'Podverse', 'domain' => 'podverse.fm' ),
-			'podfriend'    => array( 'label' => 'Podfriend', 'domain' => 'podfriend.com' ),
+			// Registry 'icon' is needed where /favicon.ico is missing or blocked:
+			// Podfriend and Podcast Guru serve none, Podcast Index 403s every
+			// asset to non-page requests (and hotlink-blocks TrueFans).
+			'podfriend'    => array( 'label' => 'Podfriend', 'domain' => 'podfriend.com', 'icon' => 'https://podfriend.com/favicon-192.png' ),
 			'boostmebuddy' => array( 'label' => 'BoostMeBuddy', 'domain' => 'boostmebuddy.com', 'icon' => 'https://www.boostmebuddy.com/icons/buddy/favicon.svg' ),
 			'castamatic'   => array( 'label' => 'Castamatic', 'domain' => 'castamatic.com' ),
 			'truefans'     => array( 'label' => 'TrueFans', 'domain' => 'truefans.fm', 'icon' => 'https://icons.duckduckgo.com/ip3/truefans.fm.ico' ),
-			'podcastindex' => array( 'label' => 'Podcast Index', 'domain' => 'podcastindex.org' ),
-			'podcastguru'  => array( 'label' => 'Podcast Guru', 'domain' => 'app.podcastguru.io' ),
+			'podcastindex' => array( 'label' => 'Podcast Index', 'domain' => 'podcastindex.org', 'icon' => 'https://icons.duckduckgo.com/ip3/podcastindex.org.ico' ),
+			'podcastguru'  => array( 'label' => 'Podcast Guru', 'domain' => 'app.podcastguru.io', 'icon' => 'https://app.podcastguru.io/favicons/android-icon-192x192.png' ),
 		);
 	}
 
