@@ -56,9 +56,15 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 ### 10. Breez as a link target
 - **Status:** Planned (user picked 2026-11-14; boost-capable apps shortlist)
 - **What:** Breez (iOS, Android) is a Lightning wallet with a built-in podcast player and boost support (Boostagrams, Sat Streaming, Value) but is not in the resolver's registry.
-- **GUID support (platform-links guide, read 2026-11-15):** show - no podcast:guid form, keyed on `feedURL` (`breez.link/p?feedURL=${encodeURIComponent(feedURL)}`); episode - the episode guid IS used, but as a query param next to the feed URL (`...&episodeID=${encodeURIComponent(episodeGUID)}`), so both patterns still need `feedURL`. The resolver does not store the feed URL today - a Breez case needs a new column (or a fetch) first.
-- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; cache schema (`create_tables()`) if `feed_url` is added; README app table; `tests/resolver_test.php`.
-- **Plan:** only proceed if we decide to store `feedURL` on the cache row; then show/episode query-param cases + schema bump (`TABLE_VERSION`) + tests.
+- **GUID support (platform-links guide, read 2026-11-15):** show - no podcast:guid form, keyed on `feedURL` (`breez.link/p?feedURL=${encodeURIComponent(feedURL)}`); episode - the episode guid IS used, but as a query param next to the feed URL (`...&episodeID=${encodeURIComponent(episodeGUID)}`), so both patterns still need `feedURL`. **The feed URL is now stored** on the cache row (`feed_url` column, `TABLE_VERSION` 3, shipped for Podcast Guru's md5 addressing) - the schema half of this item is done.
+- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README app table; `tests/resolver_test.php`.
+- **Plan:** add the Breez registry entry + show/episode query-param cases (feed URL straight from `$r['feed_url']`) + tests. No further schema work.
+
+### 11. Reverse slug-canonical and md5 share links in search
+- **Status:** Open (identified 2026-11-20)
+- **What:** pasted Podfriend slug-canonical shares (`podfriend.com/podcast/{slug}`) and Podcast Guru canonical shares (`app.podcastguru.io/podcast/{slug}-{md5(feed URL)}` or the bare md5) fall back to the plain title search - `search_app_link()` returns `null` for them (a slug can't be reversed offline; an md5 can only be matched against data we hold).
+- **Where:** `search_app_link()` in `p20-link-resolver.php` (podfriend.com / app.podcastguru.io cases).
+- **Plan:** for the md5 form, scan cached rows and compare `md5(feed_url)` (the column exists since `TABLE_VERSION` 3); for slugs there is no offline path - either leave them on byterm or accept a "no exact match" hint. Confirm with the user which UX they want before building.
 
 ## Closed decisions
 
@@ -68,3 +74,4 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **Fountain always renders a button**, degrading episode → show → `fountain.fm/discover` (user decision 2026-11-12); supersedes 0.1.2's "omit the button on an unreliable lookup" policy.
 - **Podfans**: dropped by the user 2026-11-16 - no documented URL pattern, site unreachable from the sandbox.
 - **CurioCaster episode links**: concluded 2026-11-16 - no episode route exists (client route list verified live); nothing to build until the guide gains a pattern.
+- **Podfriend episode links**: concluded 2026-11-20 - every `/podcast/{base}/{episode guid}` form 404s (live, real guid) and Podfriend's own episode URLs need internal ids; the button opens the show.
