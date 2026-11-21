@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.15] - 2026-11-20
+
+- New target app: Breez (Lightning wallet with a podcast player). Show links are `breez.link/p?feedURL={feed URL}` and episode links add `&episodeID={episode guid}` (platform-links guide), both built from the feed URL stored on the cache row - so a row cached before the `feed_url` column was added picks Breez up on its next background refresh, and a show with no feed URL gets no Breez button. The URL pattern is documented-only for now: `breez.link` returns its marketing shell for a bogus feed URL too, so a correct target can't be confirmed from here. Its icon defaults to the PNG Breez's own page points at, because `breez.link/favicon.ico` is HTML.
+
 ## [0.1.14] - 2026-11-20
 
 - Podfriend and Podcast Guru icons: 0.1.13 pointed them at their real icon files, which `curl` happily downloads (200, cross-site referer) but a browser refuses to draw - both sites send a `Cross-Origin-Resource-Policy` (`same-site` / `same-origin`) that browsers enforce on cross-origin `<img>` loads. Both now use the same referer-safe DuckDuckGo mirror as TrueFans and Podcast Index; loaded in Firefox from a cross-origin page to confirm (direct URLs show the broken-image marker, mirrors render).

@@ -53,12 +53,6 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **Where:** `output_social_preview_meta()`, `og_buffer_start()`, `og_buffer_end()`; phafe.com theme og output; feed artwork (gif, feed-side).
 - **Plan:** re-send the full param'd `/podcastlink/` URL to @WebpageBot (the crawler's cache of the old snapshot may need to expire first); if text/image is still blank, swap the feed artwork gif for a jpg as og:image (feed-side, outside this repo).
 
-### 10. Breez as a link target
-- **Status:** Implemented 2026-11-20, **not yet released** - remove this entry in the release turn (CHANGELOG entry + `v0.1.15` still to come)
-- **What:** Breez (iOS, Android) is a Lightning wallet with a built-in podcast player and boost support (Boostagrams, Sat Streaming, Value). Registry entry + `app_link()` case shipped: show `breez.link/p?feedURL={feed URL}`, episode adds `&episodeID={episode guid}` (both from the platform-links guide), using `encode_uri_component()` for `encodeURIComponent()` parity and the cache row's `feed_url` column - no feed URL, no button. Icon: `breez.link/favicon.ico` is an HTML shell, so the registry carries `breez.technology/oim/favicon-32x32.png` (loaded from a cross-origin page in Firefox). Tests: show / episode / omitted-without-feed-url, and the 9 -> 10 button and settings-preview counts.
-- **Where:** `app_registry()` / `app_link()` in `p20-link-resolver.php`; README intro, app table and verification section; `tests/resolver_test.php`.
-- **Still open:** the URL pattern itself is **not verified live** - `breez.link/p?feedURL=<bogus>` returns the same marketing shell as a real feed URL, so the sandbox cannot distinguish a correct target from a catch-all (README + AGENTS both record this as documented-only).
-
 ### 11. Reverse slug-canonical and md5 share links in search
 - **Status:** Open (identified 2026-11-20)
 - **What:** pasted Podfriend slug-canonical shares (`podfriend.com/podcast/{slug}`) and Podcast Guru canonical shares (`app.podcastguru.io/podcast/{slug}-{md5(feed URL)}` or the bare md5) fall back to the plain title search - `search_app_link()` returns `null` for them (a slug can't be reversed offline; an md5 can only be matched against data we hold).
