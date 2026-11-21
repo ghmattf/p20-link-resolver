@@ -37,8 +37,8 @@ The single running list of open work. Rules for maintaining it are in `AGENTS.md
 - **What:** `render_reports_tab()` offers only 7 / 30 / 90 days and all time; the music plugin also has custom ranges and an artist filter (here: a show filter).
 
 ### 7. Music plugin: consider the official Fountain API
-- **Status:** Open (cross-repo; music half not yet added to `ghmattf/v4v-musiclink-pro`)
-- **What:** Fountain now has a documented public API (`api.fountain.fm/v1`, see `fountain.fm/docs.md`) - verified working 2026-11-12. This repo switched `fountain_id()` to it; the music plugin still uses the unofficial Next.js server-action (`fountain_try_resolve()`) with a self-healing `next-action` fingerprint that breaks on every Fountain redeploy. `POST /v1/search/content` (query + `types`) might replace it for TRACK/ALBUM if its hits' `_guid` values match Music Index guids - unverified for music.
+- **Status:** Cross-repo - **now tracked as O28 in BOTH music repos** (`ghmattf/v4v-musiclink` and `ghmattf/v4v-musiclink-pro`, added 2026-11-21 at the user's request; that item carries the full plan). Nothing left to do here.
+- **What:** Fountain now has a documented public API (`api.fountain.fm/v1`, see `fountain.fm/docs.md`) - verified working 2026-11-12. This repo switched `fountain_id()` to it; the music plugin still uses the unofficial Next.js server-action (`fountain_try_resolve()`) with a self-healing `next-action` fingerprint that breaks on every Fountain redeploy (Pro) or resolves nothing at all (standard). `POST /v1/search/content` (query + `types`) might replace it for TRACK/ALBUM if its hits' `_guid` values match Music Index guids - unverified for music.
 - **Plan (music repo only):** probe `/v1/search/content` against a known music guid; if it matches, port `fountain_resolve()` to it, keeping the search-URL fallback. Implement only that repo's half there.
 
 ### 8. Document hardcoded shortcode attributes in the plugin description
